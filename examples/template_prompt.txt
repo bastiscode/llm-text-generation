@@ -1,0 +1,15 @@
+Fill out the report template 
+
+{
+    "name": name of the patient,
+    "illness": injury or disease,
+    "cause": reason for illnes,
+    "severity": score between 1 and 5, from not severe to very severe
+}
+
+for the following patient report:
+
+Peter Parker broke his ankle while playing football in the park.
+He could not walk anymore and needed to be transported to the hospital by 
+ambulance.
+

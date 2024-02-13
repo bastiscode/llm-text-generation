@@ -1,0 +1,6 @@
+{
+    "name": "[\w ]+",
+    "illness": "(injury|disease)",
+    "cause": "[\w ]+",
+    "severity": [1-5]
+}

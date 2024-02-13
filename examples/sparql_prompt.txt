@@ -1,0 +1,9 @@
+Generate a natural language SPARQL query like 
+
+SELECT ?height WHERE {
+    <boe>Mt. Everest<eoe> <bop>altitude<eop> ?height .
+}
+
+for the following question:
+How old is Barack Obama?
+
