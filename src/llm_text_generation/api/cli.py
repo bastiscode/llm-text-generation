@@ -27,6 +27,7 @@ class TextGenerationCli(TextProcessingCli):
             beam_width=self.args.beam_width,
             sample_top_k=self.args.sample_top_k,
             regex=self.args.regex,
+            regex_file=self.args.regex_file,
             max_length=self.args.max_length,
             use_cache=not self.args.no_kv_cache
         )

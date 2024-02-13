@@ -169,11 +169,10 @@ class TextGenerator(TextProcessor):
         batch_size: int
     ) -> IdxSelectFn:
         if self._regex_constraint is not None:
+            self._regex_constraint.reset()
             re_constraints = [
-                constraints.Regex(
-                    self._regex_constraint,
-                    self._continuations
-                ) for _ in range(batch_size)
+                self._regex_constraint.clone()
+                for _ in range(batch_size)
             ]
 
             def _re_select_fn(
@@ -336,7 +335,9 @@ class TextGenerator(TextProcessor):
         beam_width: int = 5,
         sample_top_k: int = 5,
         regex: str | None = None,
+        regex_file: str | None = None,
         cfg: str | None = None,
+        cfg_file: str | None = None,
         max_length: int | None = None,
         use_cache: bool = True,
     ) -> None:
@@ -344,10 +345,32 @@ class TextGenerator(TextProcessor):
         self._strategy = strategy
         self._beam_width = beam_width
         self._sample_top_k = sample_top_k
-        assert regex is None or cfg is None, \
-            "either regex or cfg constraint can be set but not both"
-        self._regex_constraint = regex
-        self._cfg_constraint = cfg
+
+        assert sum([
+            regex is not None,
+            regex_file is not None,
+            cfg is not None,
+            cfg_file is not None
+        ]) <= 1, \
+            "only one of regex, regex file, cfg, or cfg file can be specified"
+        if regex is not None:
+            self._regex_constraint = constraints.Regex(
+                regex,
+                self._continuations
+            )
+        elif regex_file is not None:
+            self._regex_constraint = constraints.Regex.from_file(
+                regex_file,
+                self._continuations
+            )
+        elif cfg is not None:
+            raise NotImplementedError
+        elif cfg_file is not None:
+            raise NotImplementedError
+        else:
+            self._regex_constraint = None
+            self._cfg_constraint = None
+
         self._max_length = max_length
         self._use_cache = use_cache
 
