@@ -121,20 +121,24 @@ class PretrainedDecoder(Model):
             assert name in PRETRAINED_DECODERS, f"unknown model {name}"
             if name.startswith("llama"):
                 self.model = LlamaForCausalLM.from_pretrained(
-                    f"meta-llama/{name.capitalize()}-hf"
+                    f"meta-llama/{name.capitalize()}-hf",
+                    torch_dtype="auto"
                 )  # type: ignore
             elif name.startswith("mistral"):
                 name = name[:-1].capitalize() + name[-1].capitalize()
                 self.model = MistralForCausalLM.from_pretrained(
-                    f"mistralai/{name}-v0.1"
+                    f"mistralai/{name}-v0.1",
+                    torch_dtype="auto"
                 )  # type: ignore
             elif name == "phi-2":
                 self.model = PhiForCausalLM.from_pretrained(
-                    "microsoft/phi-2"
+                    "microsoft/phi-2",
+                    torch_dtype="auto"
                 )  # type: ignore
             else:
                 self.model = GPT2LMHeadModel.from_pretrained(
-                    name
+                    name,
+                    torch_dtype="auto"
                 )  # type: ignore
 
         if isinstance(self.model, LlamaForCausalLM):
@@ -319,7 +323,7 @@ class PretrainedDecoder(Model):
             self.model.save_pretrained(tmpdir)
             quant_model = AutoGPTQForCausalLM.from_pretrained(
                 tmpdir,
-                config
+                config,
             )
         quant_model.quantize(
             examples,
@@ -339,11 +343,15 @@ def model_from_config(
     if model_type == "pretrained_decoder":
         return PretrainedDecoder(**cfg)
     elif model_type == "custom_pretrained_decoder":
-        model = AutoModelForCausalLM.from_pretrained(cfg["path"])
+        model = AutoModelForCausalLM.from_pretrained(
+            cfg["path"],
+            torch_dtype="auto"
+        )
         return PretrainedDecoder(model)
     elif model_type == "quantized_decoder":
         quant = AutoGPTQForCausalLM.from_quantized(
-            cfg["path"]
+            cfg["path"],
+            torch_dtype="auto"
         )
         assert isinstance(quant.model, PreTrainedModel)
         return PretrainedDecoder(quant.model)
