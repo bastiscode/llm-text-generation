@@ -1,0 +1,13 @@
+port: 40000
+timeout: 10
+base_url: env(BASE_URL:/api)
+kv_cache: env(KV_CACHE:true)
+batch_size: env(BATCH_SIZE:1)
+models:
+  # load a pretrained model by specifying the name
+  # - name: pretrained_model
+  # load a model from a local experiment by specifying the
+  # directory path (you can use special configuration operators,
+  # e.g. env(ENV_VAR) to load env variables)
+  - path: env(EXPERIMENT)
+    device: env(DEVICE:cuda)

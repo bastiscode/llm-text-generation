@@ -1,0 +1,13 @@
+# the t5 output tokenizer always prepends <pad>
+# as start of sequence token during decoding
+tokenize:
+  type: huggingface
+  path: relpath(t5/tokenizer.json)
+special:
+  tokens: 
+    - <pad>
+  pad: <pad>
+  prefix:
+    - <pad>
+type: t5
+eos_token: </s>

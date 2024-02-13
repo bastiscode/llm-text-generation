@@ -1,0 +1,9 @@
+tokenize:
+  type: huggingface
+  path: relpath(t5/tokenizer.json)
+special:
+  tokens: 
+    - <pad>
+  pad: <pad>
+type: t5
+eos_token: </s>

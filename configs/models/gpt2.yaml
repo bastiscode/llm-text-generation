@@ -1,0 +1,3 @@
+type: pretrained_decoder
+name: env(GPT2_MODEL:gpt2)
+gradient_checkpointing: env(GRADIENT_CHECKPOINTING:false)

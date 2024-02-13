@@ -1,0 +1,11 @@
+# the gpt2 train tokenizer always appends <|endoftext|>
+# as end of sequence token
+tokenize:
+  type: huggingface
+  path: relpath(gpt2/tokenizer.json)
+special:
+  tokens:
+    - <|endoftext|>
+  pad: <|endoftext|>
+  suffix:
+    - <|endoftext|>

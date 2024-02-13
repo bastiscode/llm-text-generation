@@ -1,0 +1,9 @@
+tokenize:
+  type: huggingface
+  path: relpath(gpt2/tokenizer.json)
+special:
+  tokens:
+    - <|endoftext|>
+  pad: <|endoftext|>
+type: gpt2
+eos_token: <|endoftext|>

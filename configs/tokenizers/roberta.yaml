@@ -1,0 +1,7 @@
+tokenize:
+  type: huggingface
+  path: relpath(roberta/tokenizer.json)
+special:
+  tokens:
+    - <pad>
+  pad: <pad>

@@ -1,0 +1,9 @@
+tokenize:
+  type: huggingface
+  path: relpath(mistral/tokenizer.json)
+special:
+  tokens:
+    - <unk>
+  pad: <unk>
+type: mistral
+eos_token: </s>
