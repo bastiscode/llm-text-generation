@@ -180,8 +180,6 @@ class TextGenerator(TextProcessor):
                 log_probs: torch.Tensor,
                 indices: List[int]
             ) -> Tuple[torch.Tensor, torch.Tensor]:
-                # apply constraints to log_probs
-
                 batch_indices = []
                 constrain_indices = []
                 for i, idx in enumerate(indices):
@@ -207,7 +205,6 @@ class TextGenerator(TextProcessor):
                         continue
 
                     re_constraints[idx].next(token)
-
                 return tokens, scores
 
             return _re_select_fn
