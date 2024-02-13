@@ -182,11 +182,14 @@ class TextGenerator(TextProcessor):
             ) -> Tuple[torch.Tensor, torch.Tensor]:
                 batch_indices = []
                 constrain_indices = []
+                final = []
                 for i, idx in enumerate(indices):
                     constrain_to = re_constraints[idx].get_constraint_indices()
                     batch_indices.extend((i for _ in range(len(constrain_to))))
                     constrain_indices.extend(constrain_to)
-                    if re_constraints[idx].is_final_state():
+                    is_final = re_constraints[idx].is_final_state()
+                    final.append(is_final)
+                    if is_final or len(constrain_to) == 0:
                         batch_indices.append(i)
                         constrain_indices.append(self._eos_token_id)
 
@@ -197,14 +200,16 @@ class TextGenerator(TextProcessor):
                 ] += 10_000.0
 
                 tokens, scores = select_fn(log_probs, indices)
-                for idx, token in zip(indices, tokens):
-                    token = token.item()
-                    is_eos = token == self._eos_token_id
-                    is_final = re_constraints[idx].is_final_state()
-                    if is_eos and is_final:
+                for idx, is_final, token in zip(
+                    indices,
+                    final,
+                    tokens.tolist()
+                ):
+                    if is_final and token == self._eos_token_id:
                         continue
 
                     re_constraints[idx].next(token)
+
                 return tokens, scores
 
             return _re_select_fn
@@ -226,6 +231,11 @@ class TextGenerator(TextProcessor):
             raise NotImplementedError("cfg constraint not implemented")
 
         return select_fn
+
+    @torch.inference_mode()
+    def _run_model(self, batch: data.InferenceBatch) -> list[Any]:
+        inputs = self._prepare_batch(batch)
+        return self._inference(inputs)
 
     def _inference(
         self,
