@@ -19,7 +19,7 @@ from transformers import (
     PreTrainedModel,
     LlamaForCausalLM,
     GPT2LMHeadModel,
-    MistralForCausalLM
+    MistralForCausalLM,
 )
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
@@ -29,6 +29,10 @@ from transformers.modeling_outputs import (
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
+from transformers.models.phi.modeling_phi import (
+    PhiForCausalLM,
+    PhiDecoderLayer
+)
 
 
 def _register_hook(
@@ -97,6 +101,7 @@ PRETRAINED_DECODERS = [
     "llama-2-30b",
     "llama-2-70b",
     "mistral-7b",
+    "phi-2"
 ]
 
 
@@ -121,6 +126,10 @@ class PretrainedDecoder(Model):
                 self.model = MistralForCausalLM.from_pretrained(
                     f"mistralai/{name}-v0.1"
                 )  # type: ignore
+            elif name == "phi-2":
+                self.model = PhiForCausalLM.from_pretrained(
+                    "microsoft/phi-2"
+                )  # type: ignore
             else:
                 self.model = GPT2LMHeadModel.from_pretrained(
                     name
@@ -130,8 +139,12 @@ class PretrainedDecoder(Model):
             self.layer_cls = LlamaDecoderLayer
         elif isinstance(self.model, MistralForCausalLM):
             self.layer_cls = MistralDecoderLayer
-        else:
+        elif isinstance(self.model, PhiForCausalLM):
+            self.layer_cls = PhiDecoderLayer
+        elif isinstance(self.model, GPT2LMHeadModel):
             self.layer_cls = GPT2Block
+        else:
+            raise RuntimeError(f"unkown model type {type(self.model)}")
 
         assert isinstance(self.model, PreTrainedModel)
         if gradient_checkpointing:

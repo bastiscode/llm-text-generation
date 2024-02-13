@@ -153,7 +153,8 @@ class TextGenerator(TextProcessor):
     def _build_inference_loader_config(self) -> Dict[str, Any]:
         return {
             "tokenizer_config": self.cfg["input_tokenizer"],
-            "window_config": {"type": "full"}
+            "window_config": {"type": "full"},
+            "clean_text": False
         }
 
     def _prepare_batch(self, batch: data.InferenceBatch) -> Dict[str, Any]:
@@ -325,6 +326,7 @@ class TextGenerator(TextProcessor):
     ) -> data.InferenceData:
         assert len(outputs) == 1, "expected single output"
         return data.InferenceData(
+            items[0].data.text +
             self.output_tokenizer.de_tokenize(outputs[0][:-1]),
             language=items[0].data.language
         )
@@ -490,7 +492,6 @@ class TextGenerator(TextProcessor):
             batch_size=1,
             sort=sort,
             num_threads=num_threads,
-            file_format="text",
         )
 
         file_name = input_file \
