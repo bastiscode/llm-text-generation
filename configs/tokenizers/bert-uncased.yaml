@@ -1,7 +1,0 @@
-tokenize:
-  type: huggingface
-  path: relpath(bert-uncased/tokenizer.json)
-special:
-  tokens:
-    - "[PAD]"
-  pad: "[PAD]"
