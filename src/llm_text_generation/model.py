@@ -1,3 +1,10 @@
+from transformers.models.phi.modeling_phi import (
+    PhiForCausalLM,
+    PhiDecoderLayer
+)
+from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
+from transformers.models.llama.modeling_llama import LlamaDecoderLayer
+from transformers.models.gpt2.modeling_gpt2 import GPT2Block
 import copy
 import tempfile
 import functools
@@ -26,13 +33,8 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithCrossAttentions,
     CausalLMOutputWithPast,
 )
-from transformers.models.gpt2.modeling_gpt2 import GPT2Block
-from transformers.models.llama.modeling_llama import LlamaDecoderLayer
-from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
-from transformers.models.phi.modeling_phi import (
-    PhiForCausalLM,
-    PhiDecoderLayer
-)
+from transformers.utils import logging as hf_logging
+hf_logging.disable_progress_bar()
 
 
 def _register_hook(
