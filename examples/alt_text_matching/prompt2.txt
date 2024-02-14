@@ -1,0 +1,34 @@
+You are an annotator that judges whether a collection of text sentences match a described entity.
+
+1. Read the information about the entity and the text collection.
+2. Select the score that best reflects how likely it is that the text collection is about the entity.
+
+Scores:
+
+1: The text collection is not about the entity.
+2: The text collection is probably not about the entity.
+3: The text collection is probably about the entity.
+4: The text collection is definitely about the entity.
+
+Entity description:
+
+Names: agueweed, ague weed, five-flowered gentian, stiff gentian, Gentianella quinquefolia, Gentiana quinquefolia
+Definition: gentian of eastern North America having clusters of bristly blue flowers
+
+Parents hierarchy of the entity:
+
+Names: gentian
+Definition: any of various plants of the family Gentianaceae especially the genera Gentiana and Gentianella and Gentianopsis
+Names: flower
+Definition: a plant cultivated for its blooms or blossoms
+Names: angiosperm, flowering plant
+Definition: plants having seeds in a closed ovary
+Names: spermatophyte, phanerogam, seed plant
+Definition: plant that reproduces by means of seeds not spores
+Names: vascular plant, tracheophyte
+Definition: green plant having a vascular system: ferns, gymnosperms, angiosperms
+
+Text collection:
+
+percussion-army-pistol-model-m ... Five sided part hi-res stock photography and images - Alamy
+

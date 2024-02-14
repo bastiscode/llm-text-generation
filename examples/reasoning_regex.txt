@@ -1,3 +1,0 @@
-Reasoning:
-([1-9]\. [\w ]{0, 128}\n){1,9}
-Answer: (yes|no)

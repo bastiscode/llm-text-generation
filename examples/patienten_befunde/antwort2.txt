@@ -1,0 +1,12 @@
+{
+"patient_id": "12345", "vessels": { "lm": {
+"stenosis": "0%" }, "lca": { "stenosis": "20%"
+}, "lcx": { "stenosis": "0%" },
+"rca": { "stenosis": "0%" } },
+"modifiers": { "global_N": false, "N": false,
+"S": false, "G": false, "E": false, 
+"HRP": false, "specific_risk_count": 0,
+
+...
+}
+}

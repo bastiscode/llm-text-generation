@@ -1,0 +1,29 @@
+{
+    "patient_id": "12345",
+    "vessels": {
+        "lm": {
+            "stenosis": "49%"
+        },
+        "lca": {
+            "stenosis": "74%"
+        },
+        "lcx": {
+            "stenosis": "82%"
+        },
+        "rca": {
+            "stenosis": "77%"
+        }
+    },
+    "modifiers": {
+        "global_N": false,
+        "N": false,
+        "S": true,
+        "G": true,
+        "E": false,
+        "HRP": false,
+        "specific_risk_count": 3,
+        "calcification_score": 0,
+        "FFR": 2,
+        "CTP": 0
+    }
+}

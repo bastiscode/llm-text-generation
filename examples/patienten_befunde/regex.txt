@@ -1,0 +1,29 @@
+\{
+    "patient_id": "\d+",
+    "vessels": \{
+        "lm": \{
+            "stenosis": "[1-9]?[0-9]%"
+        \},
+        "lca": \{
+            "stenosis": "[1-9]?[0-9]%"
+        \},
+        "lcx": \{
+            "stenosis": "[1-9]?[0-9]%"
+        \},
+        "rca": \{
+            "stenosis": "[1-9]?[0-9]%"
+        \},
+    \},
+    "modifiers": \{
+        "global_N": (true|false),
+        "N": (true|false),
+        "S": (true|false),
+        "G": (true|false),
+        "E": (true|false),
+        "HRP": (true|false),
+        "specific_risk_count": [1-5],
+        "calcification_score": [1-210],
+        "FFR": [1-5],
+        "CTP": [0-5]
+    \}
+\}

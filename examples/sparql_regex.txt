@@ -1,8 +1,0 @@
-# first define some template variables
-VAR=\?\w+
-ENT=<boe>[\w ]+<eoe>
-PROP=<bop>[\w ]+<eop>
-# now the real regex
-(?s)SELECT (* |(VAR )+)WHERE {
-    ((VAR|ENT) (VAR|PROP) (VAR|ENT) \.\n)+
-}
