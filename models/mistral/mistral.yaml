@@ -1,0 +1,30 @@
+experiment:
+  name: env(MISTRAL_MODEL:mistral-7b)
+output_tokenizer:
+  tokenize:
+    type: huggingface
+    path: relpath(mistral/tokenizer.json)
+  special:
+    tokens:
+      - <unk>
+    pad: <unk>
+  type: mistral
+  eos_token: </s>
+input_tokenizer:
+  tokenize:
+    type: huggingface
+    path: relpath(mistral/tokenizer.json)
+  special:
+    tokens:
+      - <unk>
+    pad: <unk>
+  type: mistral
+  eos_token: </s>
+model:
+  name: env(MISTRAL_MODEL:mistral-7b)
+  type: pretrained_decoder
+seed: 22
+train:
+  precision: bfp16
+  data:
+    max_length: 8192

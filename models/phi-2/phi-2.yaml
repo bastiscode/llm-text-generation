@@ -1,0 +1,30 @@
+experiment:
+  name: phi-2
+input_tokenizer:
+  eos_token: <|endoftext|>
+  special:
+    pad: <|endoftext|>
+    tokens:
+    - <|endoftext|>
+  tokenize:
+    path: relpath(phi-2/tokenizer.json)
+    type: huggingface
+  type: phi-2
+model:
+  name: phi-2
+  type: pretrained_decoder
+output_tokenizer:
+  eos_token: <|endoftext|>
+  special:
+    pad: <|endoftext|>
+    tokens:
+    - <|endoftext|>
+  tokenize:
+    path: relpath(phi-2/tokenizer.json)
+    type: huggingface
+  type: phi-2
+seed: 22
+train:
+  precision: fp16
+  data:
+    max_length: 2048
