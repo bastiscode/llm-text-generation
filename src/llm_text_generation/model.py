@@ -103,6 +103,7 @@ PRETRAINED_DECODERS = [
     "llama-2-30b",
     "llama-2-70b",
     "mistral-7b",
+    "mistral-7b-instruct",
     "phi-2"
 ]
 
@@ -125,9 +126,13 @@ class PretrainedDecoder(Model):
                     torch_dtype="auto"
                 )  # type: ignore
             elif name.startswith("mistral"):
-                name = name[:-1].capitalize() + name[-1].capitalize()
+                parts = name.split("-")
+                if len(parts) > 2:
+                    name = "Mistral-7B-Instruct-v0.2"
+                else:
+                    name = "Mistral-7B-v0.1"
                 self.model = MistralForCausalLM.from_pretrained(
-                    f"mistralai/{name}-v0.1",
+                    f"mistralai/{name}",
                     torch_dtype="auto"
                 )  # type: ignore
             elif name == "phi-2":
