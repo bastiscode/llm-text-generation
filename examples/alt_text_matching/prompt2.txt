@@ -1,3 +1,5 @@
+<s>[INST]
+
 You are an annotator that judges whether a collection of text sentences match a described entity.
 
 1. Read the information about the entity and the text collection.
@@ -31,4 +33,6 @@ Definition: green plant having a vascular system: ferns, gymnosperms, angiosperm
 Text collection:
 
 percussion-army-pistol-model-m ... Five sided part hi-res stock photography and images - Alamy
+
+[/INST]
 

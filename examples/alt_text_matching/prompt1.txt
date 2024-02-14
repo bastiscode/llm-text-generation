@@ -1,3 +1,5 @@
+<s>[INST] 
+
 You are an annotator that judges whether a collection of text sentences match a described entity.
 
 1. Read the information about the entity and the text collection.
@@ -42,4 +44,6 @@ Gentian without hi-res stock photography and images - Alamy
 Iowa wildflower Wednesday: Stiff Gentian - Bleeding Heartland
 What's Blooming Now" : September 2015
 Gentian without hi-res stock photography and images - Alamy
+
+[/INST]
 
