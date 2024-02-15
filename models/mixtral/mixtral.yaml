@@ -1,0 +1,32 @@
+experiment:
+  name: env(MIXTRAL_MODEL:mixtral-8x7b)
+output_tokenizer:
+  tokenize:
+    type: huggingface
+    path: relpath(mixtral/tokenizer.json)
+  special:
+    tokens:
+      - <unk>
+    pad: <unk>
+  type: mixtral
+  eos_token: </s>
+input_tokenizer:
+  tokenize:
+    type: huggingface
+    path: relpath(mixtral/tokenizer.json)
+  special:
+    tokens:
+      - <unk>
+    pad: <unk>
+  type: mixtral
+  eos_token: </s>
+model:
+  name: env(MIXTRAL_MODEL:mixtral-8x7b)
+  type: pretrained_decoder
+  use_flash_attention_2: true
+  load_in_4bit: env(MIXTRAL_4BIT:false)
+seed: 22
+train:
+  precision: bfp16
+  data:
+    max_length: 8192
