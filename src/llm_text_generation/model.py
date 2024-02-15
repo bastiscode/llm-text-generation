@@ -1,10 +1,3 @@
-from transformers.models.phi.modeling_phi import (
-    PhiForCausalLM,
-    PhiDecoderLayer
-)
-from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
-from transformers.models.llama.modeling_llama import LlamaDecoderLayer
-from transformers.models.gpt2.modeling_gpt2 import GPT2Block
 import copy
 import tempfile
 import functools
@@ -27,12 +20,21 @@ from transformers import (
     LlamaForCausalLM,
     GPT2LMHeadModel,
     MistralForCausalLM,
+    MixtralForCausalLM
 )
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithCrossAttentions,
     CausalLMOutputWithPast,
 )
+from transformers.models.phi.modeling_phi import (
+    PhiForCausalLM,
+    PhiDecoderLayer
+)
+from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
+from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer
+from transformers.models.llama.modeling_llama import LlamaDecoderLayer
+from transformers.models.gpt2.modeling_gpt2 import GPT2Block
 from transformers.utils import logging as hf_logging
 hf_logging.disable_progress_bar()
 
@@ -107,6 +109,8 @@ PRETRAINED_DECODERS = [
     "llama-2-70b-chat",
     "mistral-7b",
     "mistral-7b-instruct",
+    "mixtral-8x7b",
+    "mixtral-8x7b-instruct",
     "phi-2"
 ]
 
@@ -140,6 +144,17 @@ class PretrainedDecoder(Model):
                     torch_dtype="auto",
                     **kwargs
                 )  # type: ignore
+            elif name.startswith("mixtral"):
+                parts = name.split("-")
+                if len(parts) > 2:
+                    name = "Mixtral-8x7B-Instruct-v0.1"
+                else:
+                    name = "Mixtral-8x7B-v0.1"
+                self.model = MixtralForCausalLM.from_pretrained(
+                    f"mistralai/{name}",
+                    torch_dtype="auto",
+                    **kwargs
+                )  # type: ignore
             elif name == "phi-2":
                 self.model = PhiForCausalLM.from_pretrained(
                     "microsoft/phi-2",
@@ -157,6 +172,8 @@ class PretrainedDecoder(Model):
             self.layer_cls = LlamaDecoderLayer
         elif isinstance(self.model, MistralForCausalLM):
             self.layer_cls = MistralDecoderLayer
+        elif isinstance(self.model, MixtralForCausalLM):
+            self.layer_cls = MixtralDecoderLayer
         elif isinstance(self.model, PhiForCausalLM):
             self.layer_cls = PhiDecoderLayer
         elif isinstance(self.model, GPT2LMHeadModel):
@@ -260,7 +277,7 @@ class PretrainedDecoder(Model):
                 self.model.lm_head,
                 devices[-1]
             )
-        elif isinstance(self.model, MistralForCausalLM):
+        elif isinstance(self.model, (MistralForCausalLM, MixtralForCausalLM)):
             _register_hook(
                 self.hooks,
                 self.model.model.embed_tokens,
@@ -269,6 +286,22 @@ class PretrainedDecoder(Model):
             _register_hook(
                 self.hooks,
                 self.model.model.norm,
+                devices[-1]
+            )
+            _register_hook(
+                self.hooks,
+                self.model.lm_head,
+                devices[-1]
+            )
+        elif isinstance(self.model, PhiForCausalLM):
+            _register_hook(
+                self.hooks,
+                self.model.model.embed_tokens,
+                devices[0]
+            )
+            _register_hook(
+                self.hooks,
+                self.model.model.final_layer_norm,
                 devices[-1]
             )
             _register_hook(
