@@ -140,6 +140,7 @@ class TextGenerator(TextProcessor):
         self._beam_width = 5
         self._sample_top_k = 5
         self._use_cache = True
+        self._full_outputs = False
         self._max_length = None
         self._regex_constraint = None
         self._cfg_constraint = None
@@ -332,9 +333,11 @@ class TextGenerator(TextProcessor):
         outputs: List[Any],
     ) -> data.InferenceData:
         assert len(outputs) == 1, "expected single output"
+        text = self.output_tokenizer.de_tokenize(outputs[0][:-1])
+        if self._full_outputs:
+            text = items[0].data.text + text
         return data.InferenceData(
-            items[0].data.text +
-            self.output_tokenizer.de_tokenize(outputs[0][:-1]),
+            text,
             language=items[0].data.language
         )
 
@@ -349,6 +352,7 @@ class TextGenerator(TextProcessor):
         cfg_file: str | None = None,
         max_length: int | None = None,
         use_cache: bool = True,
+        full_outputs: bool = False
     ) -> None:
         assert strategy in ["greedy", "beam", "sample"]
         self._strategy = strategy
@@ -382,6 +386,7 @@ class TextGenerator(TextProcessor):
 
         self._max_length = max_length
         self._use_cache = use_cache
+        self._full_outputs = full_outputs
 
     def generate(
         self,

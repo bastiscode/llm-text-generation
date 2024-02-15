@@ -29,7 +29,8 @@ class TextGenerationCli(TextProcessingCli):
             regex=self.args.regex,
             regex_file=self.args.regex_file,
             max_length=self.args.max_length,
-            use_cache=not self.args.no_kv_cache
+            use_cache=not self.args.no_kv_cache,
+            full_outputs=self.args.full_outputs
         )
         return gen
 
@@ -115,6 +116,13 @@ def main():
         default=None,
         help="Path to file containing a regular expression to constrain "
         "text generation"
+    )
+    parser.add_argument(
+        "-full",
+        "--full-outputs",
+        action="store_true",
+        help="Whether to return input and generated text as output "
+        "(default is only generated text)"
     )
     args = parser.parse_args()
     # set default device to auto if not set
