@@ -23,6 +23,7 @@ input_tokenizer:
 model:
   name: env(MIXTRAL_MODEL:mixtral-8x7b)
   type: pretrained_decoder
+  torch_dtype: auto
   use_flash_attention_2: true
   load_in_4bit: env(MIXTRAL_4BIT:false)
 seed: 22

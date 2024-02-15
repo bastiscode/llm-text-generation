@@ -130,7 +130,7 @@ class PretrainedDecoder(Model):
             if name.startswith("llama"):
                 self.model = LlamaForCausalLM.from_pretrained(
                     f"meta-llama/{name.capitalize()}-hf",
-                    torch_dtype="auto",
+                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
                     **kwargs
                 )  # type: ignore
             elif name.startswith("mistral"):
@@ -141,7 +141,7 @@ class PretrainedDecoder(Model):
                     name = "Mistral-7B-v0.1"
                 self.model = MistralForCausalLM.from_pretrained(
                     f"mistralai/{name}",
-                    torch_dtype="auto",
+                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
                     **kwargs
                 )  # type: ignore
             elif name.startswith("mixtral"):
@@ -152,19 +152,19 @@ class PretrainedDecoder(Model):
                     name = "Mixtral-8x7B-v0.1"
                 self.model = MixtralForCausalLM.from_pretrained(
                     f"mistralai/{name}",
-                    torch_dtype="auto",
+                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
                     **kwargs
                 )  # type: ignore
             elif name == "phi-2":
                 self.model = PhiForCausalLM.from_pretrained(
                     "microsoft/phi-2",
-                    torch_dtype="auto",
+                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
                     **kwargs
                 )  # type: ignore
             else:
                 self.model = GPT2LMHeadModel.from_pretrained(
                     name,
-                    torch_dtype="auto",
+                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
                     **kwargs
                 )  # type: ignore
 
