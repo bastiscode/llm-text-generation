@@ -115,7 +115,7 @@ class PretrainedDecoder(Model):
     def __init__(
         self,
         name: str | PreTrainedModel,
-        gradient_checkpointing: bool = False,
+        **kwargs: Any
     ):
         super().__init__()
         if isinstance(name, PreTrainedModel):
@@ -126,7 +126,8 @@ class PretrainedDecoder(Model):
             if name.startswith("llama"):
                 self.model = LlamaForCausalLM.from_pretrained(
                     f"meta-llama/{name.capitalize()}-hf",
-                    torch_dtype="auto"
+                    torch_dtype="auto",
+                    **kwargs
                 )  # type: ignore
             elif name.startswith("mistral"):
                 parts = name.split("-")
@@ -136,17 +137,20 @@ class PretrainedDecoder(Model):
                     name = "Mistral-7B-v0.1"
                 self.model = MistralForCausalLM.from_pretrained(
                     f"mistralai/{name}",
-                    torch_dtype="auto"
+                    torch_dtype="auto",
+                    **kwargs
                 )  # type: ignore
             elif name == "phi-2":
                 self.model = PhiForCausalLM.from_pretrained(
                     "microsoft/phi-2",
-                    torch_dtype="auto"
+                    torch_dtype="auto",
+                    **kwargs
                 )  # type: ignore
             else:
                 self.model = GPT2LMHeadModel.from_pretrained(
                     name,
-                    torch_dtype="auto"
+                    torch_dtype="auto",
+                    **kwargs
                 )  # type: ignore
 
         if isinstance(self.model, LlamaForCausalLM):
@@ -161,7 +165,7 @@ class PretrainedDecoder(Model):
             raise RuntimeError(f"unkown model type {type(self.model)}")
 
         assert isinstance(self.model, PreTrainedModel)
-        if gradient_checkpointing:
+        if kwargs.get("gradient_checkpointing", False):
             self.model.config.use_cache = False
             self.model.gradient_checkpointing_enable()
 
