@@ -1,0 +1,30 @@
+experiment:
+  name: env(LLAMA2_MODEL:llama-2-7b)
+input_tokenizer:
+  tokenize:
+    type: huggingface
+    path: relpath(llama-2/tokenizer.json)
+  special:
+    tokens:
+      - <unk>
+    pad: <unk>
+  type: llama-2
+  eos_token: </s>
+output_tokenizer:
+  tokenize:
+    type: huggingface
+    path: relpath(llama-2/tokenizer.json)
+  special:
+    tokens:
+      - <unk>
+    pad: <unk>
+  type: llama-2
+  eos_token: </s>
+model:
+  name: env(LLAMA2_MODEL:llama-2-7b)
+  type: pretrained_decoder
+seed: 22
+train:
+  precision: fp16
+  data:
+    max_length: 4096

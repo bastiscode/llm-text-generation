@@ -102,6 +102,9 @@ PRETRAINED_DECODERS = [
     "llama-2-7b",
     "llama-2-30b",
     "llama-2-70b",
+    "llama-2-7b-chat",
+    "llama-2-30b-chat",
+    "llama-2-70b-chat",
     "mistral-7b",
     "mistral-7b-instruct",
     "phi-2"
