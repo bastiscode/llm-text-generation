@@ -32,6 +32,7 @@ class TextGenerationServer(TextProcessingServer):
             search_strategy = json.get("search_strategy", "greedy")
             beam_width = json.get("beam_width", 5)
             sample_top_k = json.get("sample_top_k", 5)
+            regex = json.get("regex", None)
 
             try:
                 with self.text_processor(json["model"]) as gen:
@@ -42,6 +43,7 @@ class TextGenerationServer(TextProcessingServer):
                         strategy=search_strategy,
                         beam_width=beam_width,
                         sample_top_k=sample_top_k,
+                        regex=regex,
                         use_cache=self.use_cache,
                     )
                     start = time.perf_counter()
