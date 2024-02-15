@@ -1,3 +1,36 @@
+<s>[INST]
+
+{
+    "patient_id": <number>,
+    "vessels": {
+        "lm": {
+            "stenosis": <percentage score>
+        },
+        "lca": {
+            "stenosis": <percentage score>
+        },
+        "lcx": {
+            "stenosis": <percentage score>
+        },
+        "rca": {
+            "stenosis": <percentage score>
+        },
+    },
+    "modifiers": {
+        "global_N": <bool>,
+        "N": <bool>,
+        "S": <bool>,
+        "G": <bool>,
+        "E": <bool>,
+        "HRP": <bool>,
+        "specific_risk_count": <score between 1 and 5>,
+        "calcification_score": <score reaching from 0 to over 400>,
+        "FFR": <score between 1 and 5>,
+        "CTP": <score between 0 and 5>
+    }
+}
+
+Fill out the JSON template above given the following patient record in German language:
 
 Keine Voraufnahmen.
 
@@ -41,4 +74,6 @@ normaler Größe. Oberbauch aszitesfrei. Knochen ohne pathologische
 Veränderungen.
 Es erfolgte eine Befundbesprechung und Verlegung des Patienten in die
 Notaufnahme bei Lungenembolie.
+
+[/INST]
 
