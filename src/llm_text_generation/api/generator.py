@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from peft import get_peft_model
 
-from text_utils import data, tokenization, constraints
+from text_utils import data, tokenization, grammar
 from text_utils.api.processor import ModelInfo, TextProcessor
 from text_utils.api.utils import (
     Device,
@@ -142,8 +142,7 @@ class TextGenerator(TextProcessor):
         self._use_cache = True
         self._full_outputs = False
         self._max_length = None
-        self._regex_constraint = None
-        self._cfg_constraint = None
+        self._constraint = None
 
     def to(self, device: Device) -> "TextGenerator":
         self.devices = get_devices(device)
@@ -170,20 +169,22 @@ class TextGenerator(TextProcessor):
         select_fn: IdxSelectFn,
         batch_size: int
     ) -> IdxSelectFn:
-        if self._regex_constraint is not None:
-            self._regex_constraint.reset()
+        if self._constraint is not None:
+            self._constraint.reset()
             re_constraints = [
-                self._regex_constraint.clone()
+                self._constraint.clone()
                 for _ in range(batch_size)
             ]
+            import time
 
-            def _re_select_fn(
+            def _constrained_select_fn(
                 log_probs: torch.Tensor,
                 indices: List[int]
             ) -> Tuple[torch.Tensor, torch.Tensor]:
                 batch_indices = []
                 constrain_indices = []
                 final = []
+                start = time.perf_counter()
                 for i, idx in enumerate(indices):
                     constrain_to = re_constraints[idx].get_constraint_indices()
                     batch_indices.extend((i for _ in range(len(constrain_to))))
@@ -211,12 +212,14 @@ class TextGenerator(TextProcessor):
 
                     re_constraints[idx].next(token)
 
+                end = time.perf_counter()
+                print(
+                    f"constrained_select_fn took {1000 * (end - start):.2f}ms"
+                )
+
                 return tokens, scores
 
-            return _re_select_fn
-
-        elif self._cfg_constraint is not None:
-            raise NotImplementedError
+            return _constrained_select_fn
 
         else:
             return select_fn
@@ -225,10 +228,10 @@ class TextGenerator(TextProcessor):
         self,
         select_fn: BeamSelectFn
     ) -> BeamSelectFn:
-        if self._regex_constraint is not None:
+        if self._constraint is not None:
             raise NotImplementedError("regex constraint not implemented")
 
-        elif self._cfg_constraint is not None:
+        elif self._constraint is not None:
             raise NotImplementedError("cfg constraint not implemented")
 
         return select_fn
@@ -348,8 +351,8 @@ class TextGenerator(TextProcessor):
         sample_top_k: int = 5,
         regex: str | None = None,
         regex_file: str | None = None,
-        cfg: str | None = None,
-        cfg_file: str | None = None,
+        cfg: tuple[str, str] | None = None,
+        cfg_files: tuple[str, str] | None = None,
         max_length: int | None = None,
         use_cache: bool = True,
         full_outputs: bool = False
@@ -363,26 +366,31 @@ class TextGenerator(TextProcessor):
             regex is not None,
             regex_file is not None,
             cfg is not None,
-            cfg_file is not None
+            cfg_files is not None
         ]) <= 1, \
-            "only one of regex, regex file, cfg, or cfg file can be specified"
+            "only one of regex, regex file, cfg, or cfg files can be specified"
         if regex is not None:
-            self._regex_constraint = constraints.Regex(
+            self._constraint = grammar.RegexConstraint(
                 regex,
                 self._continuations
             )
         elif regex_file is not None:
-            self._regex_constraint = constraints.Regex.from_file(
+            self._constraint = grammar.RegexConstraint.from_file(
                 regex_file,
                 self._continuations
             )
         elif cfg is not None:
-            raise NotImplementedError
-        elif cfg_file is not None:
-            raise NotImplementedError
+            self._constraint = grammar.LR1Constraint(
+                *cfg,
+                self._continuations
+            )
+        elif cfg_files is not None:
+            self._constraint = grammar.LR1Constraint.from_files(
+                *cfg_files,
+                self._continuations
+            )
         else:
-            self._regex_constraint = None
-            self._cfg_constraint = None
+            self._constraint = None
 
         self._max_length = max_length
         self._use_cache = use_cache

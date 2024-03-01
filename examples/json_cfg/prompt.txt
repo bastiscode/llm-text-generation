@@ -1,0 +1,4 @@
+Generate a realistic looking API response
+of an endpoint running at https://example.weatherservice.com/api/v1/weather/london
+in JSON format.
+
