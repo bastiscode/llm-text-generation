@@ -169,53 +169,52 @@ class TextGenerator(TextProcessor):
         select_fn: IdxSelectFn,
         batch_size: int
     ) -> IdxSelectFn:
-        if self._constraint is not None:
-            self._constraint.reset()
-            re_constraints = [
-                self._constraint.clone()
-                for _ in range(batch_size)
-            ]
-
-            def _constrained_select_fn(
-                log_probs: torch.Tensor,
-                indices: List[int]
-            ) -> Tuple[torch.Tensor, torch.Tensor]:
-                batch_indices = []
-                constrain_indices = []
-                final = []
-                for i, idx in enumerate(indices):
-                    constrain_to = re_constraints[idx].get_constraint_indices()
-                    batch_indices.extend((i for _ in range(len(constrain_to))))
-                    constrain_indices.extend(constrain_to)
-                    is_final = re_constraints[idx].is_final_state()
-                    final.append(is_final)
-                    if is_final or len(constrain_to) == 0:
-                        batch_indices.append(i)
-                        constrain_indices.append(self._eos_token_id)
-
-                log_probs -= 10_000.0
-                log_probs[
-                    torch.tensor(batch_indices),
-                    torch.tensor(constrain_indices)
-                ] += 10_000.0
-
-                tokens, scores = select_fn(log_probs, indices)
-                for idx, is_final, token in zip(
-                    indices,
-                    final,
-                    tokens.tolist()
-                ):
-                    if is_final and token == self._eos_token_id:
-                        continue
-
-                    re_constraints[idx].next(token)
-
-                return tokens, scores
-
-            return _constrained_select_fn
-
-        else:
+        if self._constraint is None:
             return select_fn
+
+        self._constraint.reset()
+        re_constraints = [
+            self._constraint.clone()
+            for _ in range(batch_size)
+        ]
+
+        def _constrained_select_fn(
+            log_probs: torch.Tensor,
+            indices: List[int]
+        ) -> Tuple[torch.Tensor, torch.Tensor]:
+            batch_indices = []
+            constrain_indices = []
+            final = []
+            for i, idx in enumerate(indices):
+                constrain_to = re_constraints[idx].get_constraint_indices()
+                batch_indices.extend((i for _ in range(len(constrain_to))))
+                constrain_indices.extend(constrain_to)
+                is_final = re_constraints[idx].is_final_state()
+                final.append(is_final)
+                if is_final or len(constrain_to) == 0:
+                    batch_indices.append(i)
+                    constrain_indices.append(self._eos_token_id)
+
+            log_probs -= 10_000.0
+            log_probs[
+                torch.tensor(batch_indices),
+                torch.tensor(constrain_indices)
+            ] += 10_000.0
+
+            tokens, scores = select_fn(log_probs, indices)
+            for idx, is_final, token in zip(
+                indices,
+                final,
+                tokens.tolist()
+            ):
+                if is_final and token == self._eos_token_id:
+                    continue
+
+                re_constraints[idx].next(token)
+
+            return tokens, scores
+
+        return _constrained_select_fn
 
     def _constrain_beam_select_fn(
         self,
