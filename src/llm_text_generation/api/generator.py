@@ -175,7 +175,6 @@ class TextGenerator(TextProcessor):
                 self._constraint.clone()
                 for _ in range(batch_size)
             ]
-            import time
 
             def _constrained_select_fn(
                 log_probs: torch.Tensor,
@@ -184,7 +183,6 @@ class TextGenerator(TextProcessor):
                 batch_indices = []
                 constrain_indices = []
                 final = []
-                start = time.perf_counter()
                 for i, idx in enumerate(indices):
                     constrain_to = re_constraints[idx].get_constraint_indices()
                     batch_indices.extend((i for _ in range(len(constrain_to))))
@@ -211,11 +209,6 @@ class TextGenerator(TextProcessor):
                         continue
 
                     re_constraints[idx].next(token)
-
-                end = time.perf_counter()
-                print(
-                    f"constrained_select_fn took {1000 * (end - start):.2f}ms"
-                )
 
                 return tokens, scores
 
