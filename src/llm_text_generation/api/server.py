@@ -32,6 +32,18 @@ class TextGenerationServer(TextProcessingServer):
             beam_width = json.get("beam_width", 5)
             sample_top_k = json.get("sample_top_k", 5)
             regex = json.get("regex", None)
+            cfg = json.get("cfg", {})
+            grammar = cfg.get("grammar", None)
+            lexer = cfg.get("lexer", None)
+            if regex is not None and len(cfg):
+                return abort(Response(
+                    "can only provide one of regex or cfg", status=400
+                ))
+
+            if grammar is not None and lexer is not None:
+                cfg = (grammar, lexer)
+            else:
+                cfg = None
 
             try:
                 with self.text_processor(json["model"]) as gen:
@@ -43,6 +55,7 @@ class TextGenerationServer(TextProcessingServer):
                         beam_width=beam_width,
                         sample_top_k=sample_top_k,
                         regex=regex,
+                        cfg=cfg,
                         use_cache=self.use_cache,
                     )
                     start = time.perf_counter()
