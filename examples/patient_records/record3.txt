@@ -1,4 +1,4 @@
-<s>[INST]
+[INST]
 
 {
     "patient_id": <number>,

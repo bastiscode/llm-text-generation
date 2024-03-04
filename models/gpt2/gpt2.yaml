@@ -25,6 +25,7 @@ output_tokenizer:
   type: gpt2
 seed: 22
 train:
+  compile: true
   precision: fp32
   data:
     max_length: 512

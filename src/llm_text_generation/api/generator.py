@@ -127,15 +127,9 @@ class TextGenerator(TextProcessor):
             eos_token
         )
 
-        # preprocess continuations for constraints
-        self._continuations = [
-            self.output_tokenizer.de_tokenize(
-                [self._eos_token_id, i, self._eos_token_id],
-                False
-            )[len(eos_token):-len(eos_token)].encode("utf8")
-            for i in range(self.output_tokenizer.vocab_size())
-        ]
-
+        # continuations are the tokens from the vocab
+        # (already sorted by token id)
+        self._continuations = self.output_tokenizer.get_vocab()
         self._strategy = "greedy"
         self._beam_width = 5
         self._sample_top_k = 5
@@ -220,11 +214,8 @@ class TextGenerator(TextProcessor):
         self,
         select_fn: BeamSelectFn
     ) -> BeamSelectFn:
-        if self._constraint is not None:
-            raise NotImplementedError("regex constraint not implemented")
-
-        elif self._constraint is not None:
-            raise NotImplementedError("cfg constraint not implemented")
+        if self._constraint is None:
+            return select_fn
 
         return select_fn
 
@@ -280,6 +271,10 @@ class TextGenerator(TextProcessor):
 
         if is_beam:
             beam_select = beam_select_fn(self._beam_width)
+
+            beam_select = self._constrain_beam_select_fn(
+                beam_select
+            )
 
             def beam_stop_fn(beam: Beam, _: int) -> bool:
                 return beam.token_ids[-1] == self._eos_token_id
