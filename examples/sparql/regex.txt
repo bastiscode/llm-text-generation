@@ -1,3 +1,4 @@
+%%
 SELECT \?\w+ WHERE \{
     <boe>[\w ]+<eoe> <bop>[\w ]+<eop> \?\w+ \.
 \}

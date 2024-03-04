@@ -1,3 +1,4 @@
+%%
 \{
     "name": "[\w ]+",
     "illness": "(injury|disease)",
