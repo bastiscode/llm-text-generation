@@ -1,4 +1,4 @@
-config_name: mistral.yaml
+config_name: mixtral.yaml
 git:
   branch: main
   commit: 02a7c2da6cdea388352c67889f40e55ebd8d10e7
