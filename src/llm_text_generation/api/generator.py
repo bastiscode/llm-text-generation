@@ -167,7 +167,7 @@ class TextGenerator(TextProcessor):
             return select_fn
 
         self._constraint.reset()
-        re_constraints = [
+        constraints = [
             self._constraint.clone()
             for _ in range(batch_size)
         ]
@@ -178,14 +178,14 @@ class TextGenerator(TextProcessor):
         ) -> Tuple[torch.Tensor, torch.Tensor]:
             batch_indices = []
             constrain_indices = []
-            final = []
+            matches = []
             for i, idx in enumerate(indices):
-                constrain_to = re_constraints[idx].get_constraint_indices()
+                constrain_to, is_match = constraints[idx].get_constraint()
                 batch_indices.extend((i for _ in range(len(constrain_to))))
                 constrain_indices.extend(constrain_to)
-                is_final = re_constraints[idx].is_final_state()
-                final.append(is_final)
-                if is_final or len(constrain_to) == 0:
+                is_match |= len(constrain_to) == 0
+                matches.append(is_match)
+                if is_match:
                     batch_indices.append(i)
                     constrain_indices.append(self._eos_token_id)
 
@@ -196,15 +196,15 @@ class TextGenerator(TextProcessor):
             ] += 10_000.0
 
             tokens, scores = select_fn(log_probs, indices)
-            for idx, is_final, token in zip(
+            for idx, is_match, token in zip(
                 indices,
-                final,
+                matches,
                 tokens.tolist()
             ):
-                if is_final and token == self._eos_token_id:
+                if is_match and token == self._eos_token_id:
                     continue
 
-                re_constraints[idx].next(token)
+                constraints[idx].next(token)
 
             return tokens, scores
 
