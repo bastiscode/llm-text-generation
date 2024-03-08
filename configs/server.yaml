@@ -1,4 +1,4 @@
-port: 40000
+port: env(PORT:40000)
 timeout: 10
 base_url: env(BASE_URL:/api)
 kv_cache: env(KV_CACHE:true)
