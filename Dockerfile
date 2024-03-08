@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/pytorch:23.11-py3
+FROM nvcr.io/nvidia/pytorch:24.02-py3
 
 WORKDIR /llm-text-generation
 
