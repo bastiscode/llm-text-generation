@@ -13,7 +13,6 @@ class TextGenerationServer(TextProcessingServer):
     text_processor_cls = TextGenerator
 
     def __init__(self, config: Dict[str, Any]):
-        assert "feedback_file" in config, "missing feedback_file in config"
         super().__init__(config)
         self.use_cache = self.config.get("kv_cache", True)
         self.batch_size = self.config.get("batch_size", 1)
@@ -26,7 +25,7 @@ class TextGenerationServer(TextProcessingServer):
             elif "model" not in json:
                 return abort(Response("missing model in json", status=400))
             elif "text" not in json:
-                return abort(Response("missing texts in json", status=400))
+                return abort(Response("missing text in json", status=400))
 
             search_strategy = json.get("search_strategy", "greedy")
             beam_width = json.get("beam_width", 5)
@@ -35,13 +34,14 @@ class TextGenerationServer(TextProcessingServer):
             cfg = json.get("cfg", {})
             grammar = cfg.get("grammar", None)
             lexer = cfg.get("lexer", None)
+            exact = cfg.get("exact", False)
             if regex is not None and len(cfg):
                 return abort(Response(
                     "can only provide one of regex or cfg", status=400
                 ))
 
             if grammar is not None and lexer is not None:
-                cfg = (grammar, lexer)
+                cfg = (grammar, lexer, exact)
             else:
                 cfg = None
 
@@ -61,7 +61,7 @@ class TextGenerationServer(TextProcessingServer):
                     start = time.perf_counter()
 
                     iter = ProgressIterator(
-                        ((t, None) for t in json["text"]),
+                        (t for t in json["text"]),
                         size_fn=lambda e: len(e[0].encode("utf8"))
                     )
                     generated = list(gen.generate_iter(

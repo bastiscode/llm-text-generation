@@ -28,8 +28,8 @@ class TextGenerationCli(TextProcessingCli):
             sample_top_k=self.args.sample_top_k,
             regex=self.args.regex,
             regex_file=self.args.regex_file,
-            cfg=self.args.lr1_grammar,
-            cfg_files=self.args.lr1_grammar_files,
+            cfg=(*self.args.lr1_grammar, self.args.lr1_exact),
+            cfg_files=(*self.args.lr1_grammar_files, self.args.lr1_exact),
             max_length=self.args.max_length,
             use_cache=not self.args.no_kv_cache,
             full_outputs=self.args.full_outputs
@@ -135,6 +135,13 @@ def main():
         default=None,
         help="Paths to files containing a LR(1) grammar and lexer definitions "
         "to constrain text generation"
+    )
+    parser.add_argument(
+        "-lr1e",
+        "--lr1-exact",
+        action="store_true",
+        help="Whether to use exact constraining (respect terminal boundaries) "
+        "with LR(1) grammars"
     )
     parser.add_argument(
         "-full",

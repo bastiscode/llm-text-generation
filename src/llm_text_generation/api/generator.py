@@ -348,8 +348,8 @@ class TextGenerator(TextProcessor):
         sample_top_k: int = 5,
         regex: str | None = None,
         regex_file: str | None = None,
-        cfg: tuple[str, str] | None = None,
-        cfg_files: tuple[str, str] | None = None,
+        cfg: tuple[str, str, bool] | None = None,
+        cfg_files: tuple[str, str, bool] | None = None,
         max_length: int | None = None,
         use_cache: bool = True,
         full_outputs: bool = False
@@ -377,14 +377,20 @@ class TextGenerator(TextProcessor):
                 self._continuations
             )
         elif cfg is not None:
+            grammar_string, lexer_string, exact = cfg
             self._constraint = grammar.LR1Constraint(
-                *cfg,
-                self._continuations
+                grammar_string,
+                lexer_string,
+                self._continuations,
+                exact
             )
         elif cfg_files is not None:
+            grammar_file, lexer_file, exact = cfg_files
             self._constraint = grammar.LR1Constraint.from_files(
-                *cfg_files,
-                self._continuations
+                grammar_file,
+                lexer_file,
+                self._continuations,
+                exact
             )
         else:
             self._constraint = None
