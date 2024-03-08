@@ -30,6 +30,7 @@ class TextGenerationServer(TextProcessingServer):
             search_strategy = json.get("search_strategy", "greedy")
             beam_width = json.get("beam_width", 5)
             sample_top_k = json.get("sample_top_k", 5)
+            max_length = json.get("max_length", 512)
             regex = json.get("regex", None)
             cfg = json.get("cfg", {})
             grammar = cfg.get("grammar", None)
@@ -57,6 +58,7 @@ class TextGenerationServer(TextProcessingServer):
                         regex=regex,
                         cfg=cfg,
                         use_cache=self.use_cache,
+                        max_length=max_length
                     )
                     start = time.perf_counter()
 
