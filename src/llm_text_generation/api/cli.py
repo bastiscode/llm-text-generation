@@ -22,14 +22,24 @@ class TextGenerationCli(TextProcessingCli):
         # perform some additional setup
         assert isinstance(gen, TextGenerator)
 
+        if self.args.lr1_grammar is not None:
+            cfg = (*self.args.lr1_grammar, self.args.lr1_exact)
+        else:
+            cfg = None
+
+        if self.args.lr1_grammar_files is not None:
+            cfg_files = (*self.args.lr1_grammar_files, self.args.lr1_exact)
+        else:
+            cfg_files = None
+
         gen.set_inference_options(
             strategy=self.args.search_strategy,
             beam_width=self.args.beam_width,
             sample_top_k=self.args.sample_top_k,
             regex=self.args.regex,
             regex_file=self.args.regex_file,
-            cfg=(*self.args.lr1_grammar, self.args.lr1_exact),
-            cfg_files=(*self.args.lr1_grammar_files, self.args.lr1_exact),
+            cfg=cfg,
+            cfg_files=cfg_files,
             max_length=self.args.max_length,
             use_cache=not self.args.no_kv_cache,
             full_outputs=self.args.full_outputs
