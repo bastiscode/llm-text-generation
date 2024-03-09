@@ -86,7 +86,10 @@ class TextGenerator(TextProcessor):
     @property
     def max_length(self) -> int:
         cfg_max_length = self.cfg["train"]["data"].get("max_length", 512)
-        return self._max_length or min(self._max_length, cfg_max_length)
+        return min(
+            self._max_length or cfg_max_length,
+            cfg_max_length
+        )
 
     @property
     def context_length(self) -> int:
