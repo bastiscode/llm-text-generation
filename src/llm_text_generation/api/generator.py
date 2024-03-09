@@ -122,9 +122,9 @@ class TextGenerator(TextProcessor):
         )
 
         # some options for inference
-        eos_token = self.cfg["output_tokenizer"]["eos_token"]
+        self._eos_token = self.cfg["output_tokenizer"]["eos_token"]
         self._eos_token_id = self.output_tokenizer.special_token_to_id(
-            eos_token
+            self._eos_token
         )
 
         # continuations are the tokens from the vocab
@@ -157,6 +157,20 @@ class TextGenerator(TextProcessor):
             "token_ids": token_ids_np,
             "lengths": lengths
         }
+
+    def format_chat(self, messages: list[dict[str, str]]) -> str:
+        template = self.cfg.get("chat_template", {})
+        text = ""
+        for message in messages:
+            role = message["role"]
+            if role not in template:
+                text += message["text"]
+            else:
+                text += template[role].replace(
+                    "{text}",
+                    message["text"]
+                )
+        return text
 
     def _constrain_idx_select_fn(
         self,
@@ -333,7 +347,10 @@ class TextGenerator(TextProcessor):
         outputs: List[Any],
     ) -> data.InferenceData:
         assert len(outputs) == 1, "expected single output"
-        text = self.output_tokenizer.de_tokenize(outputs[0][:-1])
+
+        text = self.output_tokenizer.de_tokenize(
+            [self._eos_token_id] + outputs[0][:-1], False
+        )[len(self._eos_token):]
         if self._full_outputs:
             text = items[0].data.text + text
         return data.InferenceData(

@@ -9,5 +9,5 @@ models:
   # load a model from a local experiment by specifying the
   # directory path (you can use special configuration operators,
   # e.g. env(ENV_VAR) to load env variables)
-  - path: env(EXPERIMENT)
+  - path: env(EXPERIMENT:models/mistral)
     device: env(DEVICE:auto)

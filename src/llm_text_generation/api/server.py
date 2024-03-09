@@ -24,8 +24,13 @@ class TextGenerationServer(TextProcessingServer):
                 return abort(Response("request body must be json", status=400))
             elif "model" not in json:
                 return abort(Response("missing model in json", status=400))
-            elif "text" not in json:
-                return abort(Response("missing text in json", status=400))
+
+            texts = json.get("texts", None)
+            chats = json.get("chats", None)
+            if texts is None and chats is None:
+                return abort(Response(
+                    "missing texts or chats in json", status=400
+                ))
 
             search_strategy = json.get("search_strategy", "greedy")
             beam_width = json.get("beam_width", 5)
@@ -51,6 +56,16 @@ class TextGenerationServer(TextProcessingServer):
                     if isinstance(gen, Error):
                         return abort(gen.to_response())
                     assert isinstance(gen, TextGenerator)
+                    if chats is not None:
+                        if texts is not None:
+                            return abort(Response(
+                                "only one of texts or chats allowed",
+                                status=400
+                            ))
+                        texts = [
+                            gen.format_chat(chat)
+                            for chat in chats
+                        ]
                     gen.set_inference_options(
                         strategy=search_strategy,
                         beam_width=beam_width,
@@ -63,7 +78,7 @@ class TextGenerationServer(TextProcessingServer):
                     start = time.perf_counter()
 
                     iter = ProgressIterator(
-                        (t for t in json["text"]),
+                        (t for t in texts),
                         size_fn=lambda e: len(e[0].encode("utf8"))
                     )
                     generated = list(gen.generate_iter(
@@ -76,7 +91,7 @@ class TextGenerationServer(TextProcessingServer):
                     s = end - start
 
                     output = {
-                        "text": generated,
+                        "texts": generated,
                         "runtime": {"b": b, "s": s},
                     }
                     return jsonify(output)
