@@ -173,20 +173,51 @@ class TextGenerator(TextProcessor):
                 )
         return text
 
+    def _get_constraints(self, n: int) -> list | None:
+        if self._constraint is None:
+            return None
+        self._constraint.reset()
+        return [self._constraint.clone() for _ in range(n)]
+
+    def _constrain_sample_select_fn(
+        self,
+        sample_top_k: int,
+        constraints: list
+    ) -> IdxSelectFn:
+        _sample_top_k = sample_select_fn(sample_top_k)
+
+        def _sample(
+            scores: torch.Tensor,
+            indices: List[int]
+        ) -> Tuple[torch.Tensor, torch.Tensor]:
+            assert scores.ndim == 2 and len(indices)
+            k = min(sample_top_k, scores.shape[-1])
+            lengths = [max(1, constraints[i].len()) for i in indices]
+            if all(
+                lengths[i] == lengths[0]
+                for i in range(1, len(lengths))
+            ) and lengths[0] >= k:
+                return _sample_top_k(scores, indices)
+
+            all_indices = []
+            all_scores = []
+            for length, score in zip(lengths, scores):
+                top_k = torch.topk(score, min(k, length), dim=-1)
+                values = torch.exp(top_k.values)
+                values /= values.sum(dim=-1, keepdim=True)
+                sampled = torch.multinomial(values, 1)
+                sampled_idx = top_k.indices[sampled]
+                all_indices.append(sampled_idx)
+                all_scores.append(score[sampled_idx])
+            return torch.cat(all_indices), torch.cat(all_scores)
+
+        return _sample
+
     def _constrain_idx_select_fn(
         self,
         select_fn: IdxSelectFn,
-        batch_size: int
+        constraints: list
     ) -> IdxSelectFn:
-        if self._constraint is None:
-            return select_fn
-
-        self._constraint.reset()
-        constraints = [
-            self._constraint.clone()
-            for _ in range(batch_size)
-        ]
-
         def _constrained_select_fn(
             log_probs: torch.Tensor,
             indices: List[int]
@@ -200,9 +231,7 @@ class TextGenerator(TextProcessor):
                 can_stop = constraint.is_match()
                 should_stop = constraint.should_stop()
                 if not should_stop:
-                    batch_indices.extend(
-                        (i for _ in range(len(constrain_to)))
-                    )
+                    batch_indices.extend([i] * len(constrain_to))
                     constrain_indices.extend(constrain_to)
                 can_stop = (
                     can_stop
@@ -325,7 +354,17 @@ class TextGenerator(TextProcessor):
                 self._sample_top_k
             ) if is_sample else greedy_select_fn()
 
-            idx_select = self._constrain_idx_select_fn(idx_select, batch_size)
+            constraints = self._get_constraints(batch_size)
+            if constraints is not None:
+                if is_sample:
+                    idx_select = self._constrain_sample_select_fn(
+                        self._sample_top_k,
+                        constraints
+                    )
+                idx_select = self._constrain_idx_select_fn(
+                    idx_select,
+                    constraints
+                )
 
             def stop_fn(token_ids: torch.Tensor, _: List[int]) -> torch.Tensor:
                 return token_ids == self._eos_token_id
