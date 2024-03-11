@@ -1,5 +1,3 @@
-[INST]
-
 {
     "patient_id": <number>,
     "vessels": {
@@ -74,6 +72,3 @@ normaler Größe. Oberbauch aszitesfrei. Knochen ohne pathologische
 Veränderungen.
 Es erfolgte eine Befundbesprechung und Verlegung des Patienten in die
 Notaufnahme bei Lungenembolie.
-
-[/INST]
-

@@ -1,27 +1,30 @@
+PERCENT [1-9]?[0-9] '%'
+BOOL (true|false)
+DIGITS \d+
 %%
 \{
-    "patient_id": "\d+",
+    "patient_id": "{DIGITS}",
     "vessels": \{
         "lm": \{
-            "stenosis": "[1-9]?[0-9]%"
+            "stenosis": "{PERCENT}"
         \},
         "lca": \{
-            "stenosis": "[1-9]?[0-9]%"
+            "stenosis": "{PERCENT}"
         \},
         "lcx": \{
-            "stenosis": "[1-9]?[0-9]%"
+            "stenosis": "{PERCENT}"
         \},
         "rca": \{
-            "stenosis": "[1-9]?[0-9]%"
+            "stenosis": "{PERCENT}"
         \},
     \},
     "modifiers": \{
-        "global_N": (true|false),
-        "N": (true|false),
-        "S": (true|false),
-        "G": (true|false),
-        "E": (true|false),
-        "HRP": (true|false),
+        "global_N": {BOOL},
+        "N": {BOOL},
+        "S": {BOOL},
+        "G": {BOOL},
+        "E": {BOOL},
+        "HRP": {BOOL},
         "specific_risk_count": [1-5],
         "calcification_score": [1-9]?[0-9]?[0-9],
         "FFR": [1-5],

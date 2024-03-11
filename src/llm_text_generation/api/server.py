@@ -66,6 +66,11 @@ class TextGenerationServer(TextProcessingServer):
                             gen.format_chat(chat)
                             for chat in chats
                         ]
+                    else:
+                        texts = [
+                            gen.format_chat([{"role": "user", "text": text}])
+                            for text in texts
+                        ]
                     gen.set_inference_options(
                         strategy=search_strategy,
                         beam_width=beam_width,
