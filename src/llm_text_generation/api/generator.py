@@ -32,10 +32,8 @@ from llm_text_generation.model import (
     model_from_config
 )
 
-_BASE_URL = "https://ad-publications.informatik.uni-freiburg.de/" \
-    "ACL_whitespace_procession_transformer_BHW_2023.materials"
-_NAME_TO_ZIP = {
-}
+_BASE_URL = ""
+_NAME_TO_ZIP = {}
 
 
 class TextGenerator(TextProcessor):
