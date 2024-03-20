@@ -174,40 +174,43 @@ class TextGenerator(TextProcessor):
     def _get_constraints(self, n: int) -> list | None:
         if self._constraint is None:
             return None
+
+        # this is non-blocking and runs heavy computations for
+        # the constraint reset in the background on CPU
         self._constraint.reset()
         return [self._constraint.clone() for _ in range(n)]
 
-    def _constrain_sample_select_fn(
+    def _constrained_sample_select_fn(
         self,
         sample_top_k: int,
         constraints: list
     ) -> IdxSelectFn:
-        _sample_top_k = sample_select_fn(sample_top_k)
-
         def _sample(
-            scores: torch.Tensor,
+            log_probs: torch.Tensor,
             indices: List[int]
         ) -> Tuple[torch.Tensor, torch.Tensor]:
-            assert scores.ndim == 2 and len(indices)
-            k = min(sample_top_k, scores.shape[-1])
-            lengths = [max(1, constraints[i].len()) for i in indices]
-            if all(
-                lengths[i] == lengths[0]
-                for i in range(1, len(lengths))
-            ) and lengths[0] >= k:
-                return _sample_top_k(scores, indices)
+            assert log_probs.ndim == 2 and len(indices)
+            k = min(sample_top_k, log_probs.shape[-1])
+
+            top_k = torch.topk(log_probs, k, dim=-1)
 
             all_indices = []
-            all_scores = []
-            for length, score in zip(lengths, scores):
-                top_k = torch.topk(score, min(k, length), dim=-1)
-                values = torch.exp(top_k.values)
-                values /= values.sum(dim=-1, keepdim=True)
-                sampled = torch.multinomial(values, 1)
-                sampled_idx = top_k.indices[sampled]
+            all_log_probs = []
+            for idx, top_k_values, top_k_indices in zip(
+                indices,
+                top_k.values,
+                top_k.indices
+            ):
+                length = max(1, constraints[idx].len())
+                probs = torch.exp(top_k_values[:length])
+                probs /= probs.sum(dim=-1, keepdim=True)
+                sampled = torch.multinomial(probs, 1)
+                sampled_idx = top_k_indices[sampled]
+                sample_log_prob = top_k_values[sampled]
                 all_indices.append(sampled_idx)
-                all_scores.append(score[sampled_idx])
-            return torch.cat(all_indices), torch.cat(all_scores)
+                all_log_probs.append(sample_log_prob)
+
+            return torch.cat(all_indices), torch.cat(all_log_probs)
 
         return _sample
 
@@ -256,20 +259,109 @@ class TextGenerator(TextProcessor):
                 if can_stop and token == self._eos_token_id:
                     continue
 
+                # this is non-blocking and runs heavy computations for
+                # the next constraint check in the background on CPU
                 constraints[idx].next(token)
 
             return tokens, scores
 
         return _constrained_select_fn
 
-    def _constrain_beam_select_fn(
+    def _constrained_beam_select_fn(
         self,
-        select_fn: BeamSelectFn
+        constraint: Any,
+        beam_width: int
     ) -> BeamSelectFn:
-        if self._constraint is None:
-            return select_fn
+        def _beam_select(
+            log_probs: torch.Tensor,
+            batch_beams: list[list[Beam]],
+            _: list[int]
+        ) -> list[list[Beam]]:
+            batch_indices = []
+            constrain_indices = []
+            i = 0
+            for beams in batch_beams:
+                for beam in beams:
+                    # initialize constraints
+                    if "constraint" not in beam.info:
+                        beam_const = constraint.clone()
+                        beam_const.reset()
+                        beam.info["constraint"] = beam_const
 
-        return select_fn
+                    beam_const = beam.info["constraint"]
+
+                    constrain_to = beam_const.get()
+                    can_stop = beam_const.is_match()
+                    should_stop = beam_const.should_stop()
+                    if not should_stop:
+                        batch_indices.extend([i] * len(constrain_to))
+                        constrain_indices.extend(constrain_to)
+                    can_stop = (
+                        can_stop
+                        or should_stop
+                        or len(constrain_to) == 0
+                    )
+                    if can_stop:
+                        batch_indices.append(i)
+                        constrain_indices.append(self._eos_token_id)
+
+                    beam.info["can_stop"] = can_stop
+                    i += 1
+
+            log_probs -= 10_000.0
+            log_probs[
+                torch.tensor(batch_indices),
+                torch.tensor(constrain_indices)
+            ] += 10_000.0
+
+            num_beams = [len(b) for b in batch_beams]
+            assert log_probs.ndim == 2 and log_probs.shape[0] == sum(num_beams)
+            k = min(beam_width, log_probs.shape[1])
+            top_k = torch.topk(log_probs, k, dim=1)
+
+            # get new candidates
+            batch_candidates = []
+            for beams, indices, values in zip(
+                batch_beams,
+                torch.split(top_k.indices, num_beams),
+                torch.split(top_k.values, num_beams)
+            ):
+                candidates = []
+                for idx, (token_ids, log_probs) in enumerate(zip(
+                    indices.tolist(),
+                    values.tolist()
+                )):
+                    length = max(1, beams[idx].info["constraint"].len())
+                    candidates.extend(
+                        (idx, token_id, log_p)
+                        for token_id, log_p in
+                        zip(token_ids[:length], log_probs[:length])
+                    )
+
+                candidates = sorted(
+                    candidates,
+                    key=lambda item: -(beams[item[0]].log_prob + item[2]),
+                )[:2 * beam_width]
+
+                updated_candidates = []
+                for idx, token_id, log_p in candidates:
+                    beam = beams[idx]
+                    new_beam = Beam.from_beam(beam, log_p, token_id)
+                    if not (
+                        beam.info["can_stop"]
+                        and token_id == self._eos_token_id
+                    ):
+                        beam_const = beam.info["constraint"].clone()
+                        beam_const.next(token_id)
+                        new_beam.info["constraint"] = beam_const
+
+                    updated_candidates.append(new_beam)
+
+                batch_candidates.append(updated_candidates)
+
+            return batch_candidates
+
+        return _beam_select
 
     @torch.inference_mode()
     def _run_model(self, batch: data.InferenceBatch) -> list[Any]:
@@ -322,11 +414,13 @@ class TextGenerator(TextProcessor):
         is_sample = self._strategy == "sample" and self._sample_top_k > 1
 
         if is_beam:
-            beam_select = beam_select_fn(self._beam_width)
-
-            beam_select = self._constrain_beam_select_fn(
-                beam_select
-            )
+            if self._constraint is not None:
+                beam_select = self._constrained_beam_select_fn(
+                    self._constraint,
+                    self._beam_width
+                )
+            else:
+                beam_select = beam_select_fn(self._beam_width)
 
             def beam_stop_fn(beam: Beam, _: int) -> bool:
                 return beam.token_ids[-1] == self._eos_token_id
@@ -355,10 +449,11 @@ class TextGenerator(TextProcessor):
             constraints = self._get_constraints(batch_size)
             if constraints is not None:
                 if is_sample:
-                    idx_select = self._constrain_sample_select_fn(
+                    idx_select = self._constrained_sample_select_fn(
                         self._sample_top_k,
                         constraints
                     )
+
                 idx_select = self._constrain_idx_select_fn(
                     idx_select,
                     constraints
