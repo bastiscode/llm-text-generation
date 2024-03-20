@@ -290,12 +290,14 @@ class TextGenerator(TextProcessor):
 
                     beam_const = beam.info["constraint"]
 
+                    length = 0
                     constrain_to = beam_const.get()
                     can_stop = beam_const.is_match()
                     should_stop = beam_const.should_stop()
                     if not should_stop:
                         batch_indices.extend([i] * len(constrain_to))
                         constrain_indices.extend(constrain_to)
+                        length += len(constrain_to)
                     can_stop = (
                         can_stop
                         or should_stop
@@ -304,8 +306,10 @@ class TextGenerator(TextProcessor):
                     if can_stop:
                         batch_indices.append(i)
                         constrain_indices.append(self._eos_token_id)
+                        length += 1
 
                     beam.info["can_stop"] = can_stop
+                    beam.info["length"] = length
                     i += 1
 
             log_probs -= 10_000.0
@@ -331,7 +335,7 @@ class TextGenerator(TextProcessor):
                     indices.tolist(),
                     values.tolist()
                 )):
-                    length = max(1, beams[idx].info["constraint"].len())
+                    length = beams[idx].info["length"]
                     candidates.extend(
                         (idx, token_id, log_p)
                         for token_id, log_p in
@@ -347,13 +351,14 @@ class TextGenerator(TextProcessor):
                 for idx, token_id, log_p in candidates:
                     beam = beams[idx]
                     new_beam = Beam.from_beam(beam, log_p, token_id)
+                    beam_const = beam.info["constraint"].clone()
                     if not (
                         beam.info["can_stop"]
                         and token_id == self._eos_token_id
                     ):
-                        beam_const = beam.info["constraint"].clone()
                         beam_const.next(token_id)
-                        new_beam.info["constraint"] = beam_const
+
+                    new_beam.info["constraint"] = beam_const
 
                     updated_candidates.append(new_beam)
 
