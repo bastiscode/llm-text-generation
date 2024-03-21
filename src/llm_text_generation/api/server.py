@@ -39,9 +39,11 @@ class TextGenerationServer(TextProcessingServer):
             elif chats is not None:
                 texts = chats
 
-            search_strategy = json.get("search_strategy", "greedy")
-            beam_width = json.get("beam_width", 5)
-            sample_top_k = json.get("sample_top_k", 5)
+            sampling_strategy = json.get("sampling_strategy", "greedy")
+            beam_width = json.get("beam_width", None)
+            top_k = json.get("top_k", 10)
+            top_p = json.get("top_p", 10)
+            temp = json.get("temperature", 1.0)
             max_length = json.get("max_length", None)
             regex = json.get("regex", None)
             cfg = json.get("cfg", {})
@@ -64,9 +66,11 @@ class TextGenerationServer(TextProcessingServer):
                         return abort(gen.to_response())
                     assert isinstance(gen, TextGenerator)
                     gen.set_inference_options(
-                        sampling_strategy=search_strategy,
+                        sampling_strategy=sampling_strategy,
+                        temperature=temp,
+                        top_k=top_k,
+                        top_p=top_p,
                         beam_width=beam_width,
-                        sample_top_k=sample_top_k,
                         regex=regex,
                         cfg=cfg,
                         use_cache=self.use_cache,
