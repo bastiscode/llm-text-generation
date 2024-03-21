@@ -42,7 +42,7 @@ class TextGenerationServer(TextProcessingServer):
             sampling_strategy = json.get("sampling_strategy", "greedy")
             beam_width = json.get("beam_width", None)
             top_k = json.get("top_k", 10)
-            top_p = json.get("top_p", 10)
+            top_p = json.get("top_p", 0.95)
             temp = json.get("temperature", 1.0)
             max_length = json.get("max_length", None)
             regex = json.get("regex", None)
