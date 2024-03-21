@@ -33,9 +33,11 @@ class TextGenerationCli(TextProcessingCli):
             cfg_files = None
 
         gen.set_inference_options(
-            strategy=self.args.search_strategy,
+            sampling_strategy=self.args.sampling_strategy,
+            temperature=self.args.temperature,
+            top_k=self.args.top_k,
+            top_p=self.args.top_p,
             beam_width=self.args.beam_width,
-            sample_top_k=self.args.sample_top_k,
             regex=self.args.regex,
             regex_file=self.args.regex_file,
             cfg=cfg,
@@ -84,23 +86,35 @@ def main():
         "Generate natural language text."
     )
     parser.add_argument(
-        "--search-strategy",
-        choices=["greedy", "beam", "sample"],
+        "--sampling-strategy",
+        choices=["greedy", "top_k", "top_p"],
         type=str,
         default="greedy",
-        help="Search strategy to use during decoding"
+        help="Sampling strategy to use during decoding"
     )
     parser.add_argument(
         "--beam-width",
         type=int,
-        default=5,
+        default=None,
         help="Beam width to use for beam search decoding"
     )
     parser.add_argument(
-        "--sample-top-k",
+        "--top-k",
         type=int,
-        default=5,
-        help="Sample from top k tokens during sampling decoding"
+        default=10,
+        help="Restrict to top k tokens during sampling"
+    )
+    parser.add_argument(
+        "--top-p",
+        type=float,
+        default=0.95,
+        help="Restrict to top p cumulative probability tokens during sampling"
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="Temperature to use during sampling"
     )
     parser.add_argument(
         "--no-kv-cache",

@@ -17,11 +17,7 @@ from text_utils.api.utils import (
 )
 from text_utils.inference import (
     Beam,
-    BeamSelectFn,
-    IdxSelectFn,
-    beam_select_fn,
-    greedy_select_fn,
-    sample_select_fn,
+    utils as inference_utils,
     search,
     beam_search
 )
@@ -34,6 +30,8 @@ from llm_text_generation.model import (
 
 _BASE_URL = ""
 _NAME_TO_ZIP = {}
+
+Chat = list[dict[str, str]]
 
 
 class TextGenerator(TextProcessor):
@@ -129,9 +127,10 @@ class TextGenerator(TextProcessor):
         # continuations are the tokens from the vocab
         # (already sorted by token id)
         self._continuations = self.output_tokenizer.get_vocab()
-        self._strategy = "greedy"
+        self._sampling_strategy = "greedy"
         self._beam_width = 5
-        self._sample_top_k = 5
+        self._temp = 1.0
+        self._top_k = 5
         self._use_cache = True
         self._full_outputs = False
         self._max_length = None
@@ -157,10 +156,13 @@ class TextGenerator(TextProcessor):
             "lengths": lengths
         }
 
-    def format_chat(self, messages: list[dict[str, str]]) -> str:
+    def format_input(self, ipt: str | Chat) -> str:
+        if isinstance(ipt, str):
+            ipt = [{"role": "user", "text": ipt}]
+
         template = self.cfg.get("chat_template", {})
         text = ""
-        for message in messages:
+        for message in ipt:
             role = message["role"]
             if role not in template:
                 text += message["text"]
@@ -171,207 +173,72 @@ class TextGenerator(TextProcessor):
                 )
         return text
 
-    def _get_constraints(self, n: int) -> list | None:
-        if self._constraint is None:
-            return None
-
-        # this is non-blocking and runs heavy computations for
-        # the constraint reset in the background on CPU
-        self._constraint.reset()
-        return [self._constraint.clone() for _ in range(n)]
-
-    def _constrained_sample_select_fn(
-        self,
-        sample_top_k: int,
-        constraints: list
-    ) -> IdxSelectFn:
-        def _sample(
-            log_probs: torch.Tensor,
-            indices: List[int]
-        ) -> Tuple[torch.Tensor, torch.Tensor]:
-            assert log_probs.ndim == 2 and len(indices)
-            k = min(sample_top_k, log_probs.shape[-1])
-
-            top_k = torch.topk(log_probs, k, dim=-1)
-
-            all_indices = []
-            all_log_probs = []
-            for idx, top_k_values, top_k_indices in zip(
-                indices,
-                top_k.values,
-                top_k.indices
-            ):
-                length = max(1, constraints[idx].len())
-                probs = torch.exp(top_k_values[:length])
-                probs /= probs.sum(dim=-1, keepdim=True)
-                sampled = torch.multinomial(probs, 1)
-                sampled_idx = top_k_indices[sampled]
-                sample_log_prob = top_k_values[sampled]
-                all_indices.append(sampled_idx)
-                all_log_probs.append(sample_log_prob)
-
-            return torch.cat(all_indices), torch.cat(all_log_probs)
-
-        return _sample
-
-    def _constrain_idx_select_fn(
-        self,
-        select_fn: IdxSelectFn,
-        constraints: list
-    ) -> IdxSelectFn:
-        def _constrained_select_fn(
-            log_probs: torch.Tensor,
-            indices: List[int]
-        ) -> Tuple[torch.Tensor, torch.Tensor]:
-            batch_indices = []
-            constrain_indices = []
-            stops = []
-            for i, idx in enumerate(indices):
-                constraint = constraints[idx]
-                constrain_to = constraint.get()
-                can_stop = constraint.is_match()
-                should_stop = constraint.should_stop()
-                if not should_stop:
-                    batch_indices.extend([i] * len(constrain_to))
-                    constrain_indices.extend(constrain_to)
-                can_stop = (
-                    can_stop
-                    or should_stop
-                    or len(constrain_to) == 0
-                )
-                stops.append(can_stop)
-                if can_stop:
-                    batch_indices.append(i)
-                    constrain_indices.append(self._eos_token_id)
-
-            log_probs -= 10_000.0
-            log_probs[
-                torch.tensor(batch_indices),
-                torch.tensor(constrain_indices)
-            ] += 10_000.0
-
-            tokens, scores = select_fn(log_probs, indices)
-            for idx, can_stop, token in zip(
-                indices,
-                stops,
-                tokens.tolist()
-            ):
-                if can_stop and token == self._eos_token_id:
-                    continue
-
-                # this is non-blocking and runs heavy computations for
-                # the next constraint check in the background on CPU
-                constraints[idx].next(token)
-
-            return tokens, scores
-
-        return _constrained_select_fn
-
-    def _constrained_beam_select_fn(
-        self,
-        constraint: Any,
-        beam_width: int
-    ) -> BeamSelectFn:
-        def _beam_select(
-            log_probs: torch.Tensor,
-            batch_beams: list[list[Beam]],
-            _: list[int]
-        ) -> list[list[Beam]]:
-            batch_indices = []
-            constrain_indices = []
-            i = 0
-            for beams in batch_beams:
-                for beam in beams:
-                    # initialize constraints
-                    if "constraint" not in beam.info:
-                        beam_const = constraint.clone()
-                        beam_const.reset()
-                        beam.info["constraint"] = beam_const
-
-                    beam_const = beam.info["constraint"]
-
-                    length = 0
-                    constrain_to = beam_const.get()
-                    can_stop = beam_const.is_match()
-                    should_stop = beam_const.should_stop()
-                    if not should_stop:
-                        batch_indices.extend([i] * len(constrain_to))
-                        constrain_indices.extend(constrain_to)
-                        length += len(constrain_to)
-                    can_stop = (
-                        can_stop
-                        or should_stop
-                        or len(constrain_to) == 0
-                    )
-                    if can_stop:
-                        batch_indices.append(i)
-                        constrain_indices.append(self._eos_token_id)
-                        length += 1
-
-                    beam.info["can_stop"] = can_stop
-                    beam.info["length"] = length
-                    i += 1
-
-            log_probs -= 10_000.0
-            log_probs[
-                torch.tensor(batch_indices),
-                torch.tensor(constrain_indices)
-            ] += 10_000.0
-
-            num_beams = [len(b) for b in batch_beams]
-            assert log_probs.ndim == 2 and log_probs.shape[0] == sum(num_beams)
-            k = min(beam_width, log_probs.shape[1])
-            top_k = torch.topk(log_probs, k, dim=1)
-
-            # get new candidates
-            batch_candidates = []
-            for beams, indices, values in zip(
-                batch_beams,
-                torch.split(top_k.indices, num_beams),
-                torch.split(top_k.values, num_beams)
-            ):
-                candidates = []
-                for idx, (token_ids, log_probs) in enumerate(zip(
-                    indices.tolist(),
-                    values.tolist()
-                )):
-                    length = beams[idx].info["length"]
-                    candidates.extend(
-                        (idx, token_id, log_p)
-                        for token_id, log_p in
-                        zip(token_ids[:length], log_probs[:length])
-                    )
-
-                candidates = sorted(
-                    candidates,
-                    key=lambda item: -(beams[item[0]].log_prob + item[2]),
-                )[:2 * beam_width]
-
-                updated_candidates = []
-                for idx, token_id, log_p in candidates:
-                    beam = beams[idx]
-                    new_beam = Beam.from_beam(beam, log_p, token_id)
-                    beam_const = beam.info["constraint"].clone()
-                    if not (
-                        beam.info["can_stop"]
-                        and token_id == self._eos_token_id
-                    ):
-                        beam_const.next(token_id)
-
-                    new_beam.info["constraint"] = beam_const
-
-                    updated_candidates.append(new_beam)
-
-                batch_candidates.append(updated_candidates)
-
-            return batch_candidates
-
-        return _beam_select
-
     @torch.inference_mode()
     def _run_model(self, batch: data.InferenceBatch) -> list[Any]:
         inputs = self._prepare_batch(batch)
         return self._inference(inputs)
+
+    def _constraint_logit_fn(
+        self,
+        constraints: list | None,
+    ) -> inference_utils.LogitFn:
+        def _constrain_logits(
+            logits: torch.Tensor,
+            indices_or_beams:  list[int] | list[Beam]
+        ) -> torch.Tensor:
+            zeros = torch.full_like(logits, float("-inf"))
+
+            batch_indices = []
+            constrain_indices = []
+            for i, idx_or_beam in enumerate(indices_or_beams):
+                if constraints is None:
+                    assert isinstance(idx_or_beam, Beam)
+                    constraint = idx_or_beam.info["constraint"]
+                else:
+                    assert isinstance(idx_or_beam, int)
+                    constraint = constraints[idx_or_beam]
+
+                constrain_to, is_match = constraint.get()
+
+                batch_indices.extend([i] * len(constrain_to))
+                constrain_indices.extend(constrain_to)
+
+                if len(constrain_to) == 0 or is_match:
+                    batch_indices.append(i)
+                    constrain_indices.append(self._eos_token_id)
+
+            batch_indices = torch.tensor(batch_indices, device=logits.device)
+            constrain_indices = torch.tensor(
+                constrain_indices,
+                device=logits.device
+            )
+
+            zeros[batch_indices, constrain_indices] = logits[
+                batch_indices,
+                constrain_indices
+            ]
+
+            return zeros
+
+        return _constrain_logits
+
+    def _constraint_sample_fn(
+        self,
+        constraints: list,
+        sample_fn: inference_utils.SampleFn
+    ) -> inference_utils.SampleFn:
+        def _sample(
+            logits: torch.Tensor,
+            indices: list[int]
+        ) -> torch.Tensor:
+            token_ids = sample_fn(logits, indices)
+            for idx, token_id in zip(indices, token_ids.tolist()):
+                if token_id == self._eos_token_id:
+                    continue
+                constraints[idx].next(token_id)
+            return token_ids
+
+        return _sample
 
     def _inference(
         self,
@@ -415,24 +282,54 @@ class TextGenerator(TextProcessor):
                 for cache in info["kv_cache"]
             )
 
-        is_beam = self._strategy == "beam" and self._beam_width > 1
-        is_sample = self._strategy == "sample" and self._sample_top_k > 1
-
-        if is_beam:
+        if self._beam_width is not None and self._beam_width > 1:
+            logit_fns = []
+            initial_beams = [
+                Beam(token_ids, [0.0] * len(token_ids))
+                for token_ids in initial_token_ids
+            ]
             if self._constraint is not None:
-                beam_select = self._constrained_beam_select_fn(
-                    self._constraint,
-                    self._beam_width
-                )
-            else:
-                beam_select = beam_select_fn(self._beam_width)
+                self._constraint.reset()
+                for beam in initial_beams:
+                    beam.info["constraint"] = self._constraint.clone()
+                logit_fns.append(self._constraint_logit_fn(None))
 
-            def beam_stop_fn(beam: Beam, _: int) -> bool:
+                def _update_beam(beam: Beam, token_id: int, log_p: float):
+                    new_beam = Beam.from_beam(beam, token_id, log_p)
+                    if token_id == self._eos_token_id:
+                        return new_beam
+
+                    beam_const = beam.info["constraint"].clone()
+                    beam_const.next(token_id)
+                    new_beam.info["constraint"] = beam_const
+                    return new_beam
+
+                candidate_fn = _update_beam
+            else:
+                candidate_fn = inference_utils.default_beam_candidate_fn()
+
+            if self._sampling_strategy == "greedy":
+                sample_fn = inference_utils.beam_greedy()
+            elif self._sampling_strategy == "top_k":
+                assert self._top_k >= self._beam_width, \
+                    "top k must be greater than or equal to beam width"
+                logit_fns.append(inference_utils.top_k_masking(self._top_k))
+                sample_fn = inference_utils.beam_sample()
+            else:
+                logit_fns.append(inference_utils.nucleus_masking(self._top_p))
+                sample_fn = inference_utils.beam_sample()
+
+            if self._sampling_strategy != "greedy" and self._temp != 1.0:
+                logit_fns.append(inference_utils.temperature_scaling(
+                    self._temp
+                ))
+
+            def beam_stop_fn(beam: Beam) -> bool:
                 return beam.token_ids[-1] == self._eos_token_id
 
             outputs = beam_search(
                 decode_fn=_decode_fn,
-                initial_token_ids=initial_token_ids,
+                initial=initial_beams,
                 pad_token_id=self.output_tokenizer.pad_token_id(),
                 max_length=self.max_length,
                 stop_fn=beam_stop_fn,
@@ -440,49 +337,62 @@ class TextGenerator(TextProcessor):
                 normalize_by_length=True,
                 alpha=1.0,
                 beam_width=self._beam_width,
-                select_fn=beam_select,
+                sample_fn=sample_fn,
+                candidate_fn=candidate_fn,
+                logit_fns=logit_fns,
                 kwargs_update_fn=_kwargs_update_fn,
                 **inference_kwargs
             )
             return [output[0].token_ids for output in outputs]
 
+        logit_fns = []
+        constraints: list | None = None
+        # add constraint logit function if constraint is specified
+        if self._constraint is not None:
+            self._constraint.reset()
+            constraints = [self._constraint.clone() for _ in range(batch_size)]
+            # add a logit fn that masks out tokens that are
+            # not in the constraint
+            logit_fns.append(self._constraint_logit_fn(constraints))
+
+        if self._sampling_strategy == "greedy":
+            sample_fn = inference_utils.greedy()
+        elif self._sampling_strategy == "top_k":
+            logit_fns.append(inference_utils.top_k_masking(self._top_k))
+            sample_fn = inference_utils.sample()
         else:
-            idx_select = sample_select_fn(
-                self._sample_top_k
-            ) if is_sample else greedy_select_fn()
+            logit_fns.append(inference_utils.nucleus_masking(self._top_p))
+            sample_fn = inference_utils.sample()
 
-            constraints = self._get_constraints(batch_size)
-            if constraints is not None:
-                if is_sample:
-                    idx_select = self._constrained_sample_select_fn(
-                        self._sample_top_k,
-                        constraints
-                    )
+        if self._sampling_strategy != "greedy" and self._temp != 1.0:
+            logit_fns.append(inference_utils.temperature_scaling(
+                self._temp
+            ))
 
-                idx_select = self._constrain_idx_select_fn(
-                    idx_select,
-                    constraints
-                )
+        if constraints is not None:
+            # after sampling a token, update the constraint
+            sample_fn = self._constraint_sample_fn(constraints, sample_fn)
 
-            def stop_fn(token_ids: torch.Tensor, _: List[int]) -> torch.Tensor:
-                return token_ids == self._eos_token_id
+        def stop_fn(token_ids: torch.Tensor, _: list[int]) -> torch.Tensor:
+            return token_ids == self._eos_token_id
 
-            return search(
-                decode_fn=_decode_fn,
-                initial_token_ids=initial_token_ids,
-                pad_token_id=self.output_tokenizer.pad_token_id(),
-                max_length=self.max_length,
-                select_fn=idx_select,
-                stop_fn=stop_fn,
-                device=self.devices[0],
-                kwargs_update_fn=_kwargs_update_fn,
-                **inference_kwargs
-            )
+        return search(
+            decode_fn=_decode_fn,
+            initial_token_ids=initial_token_ids,
+            pad_token_id=self.output_tokenizer.pad_token_id(),
+            max_length=self.max_length,
+            sample_fn=sample_fn,
+            logit_fns=logit_fns,
+            stop_fn=stop_fn,
+            device=self.devices[0],
+            kwargs_update_fn=_kwargs_update_fn,
+            **inference_kwargs
+        )
 
     def _process_results(
         self,
-        items: List[data.InferenceItem],
-        outputs: List[Any],
+        items: list[data.InferenceItem],
+        outputs: list[Any],
     ) -> data.InferenceData:
         assert len(outputs) == 1, "expected single output"
 
@@ -498,9 +408,11 @@ class TextGenerator(TextProcessor):
 
     def set_inference_options(
         self,
-        strategy: str = "greedy",
-        beam_width: int = 5,
-        sample_top_k: int = 5,
+        sampling_strategy: str = "greedy",
+        temperature: float = 1.0,
+        top_k: int = 10,
+        top_p: float = 0.95,
+        beam_width: int | None = None,
         regex: str | None = None,
         regex_file: str | None = None,
         cfg: tuple[str, str, bool] | None = None,
@@ -509,10 +421,12 @@ class TextGenerator(TextProcessor):
         use_cache: bool = True,
         full_outputs: bool = False
     ) -> None:
-        assert strategy in ["greedy", "beam", "sample"]
-        self._strategy = strategy
+        assert sampling_strategy in ["greedy", "top_k", "top_p"]
+        self._sampling_strategy = sampling_strategy
         self._beam_width = beam_width
-        self._sample_top_k = sample_top_k
+        self._temp = temperature
+        self._top_k = top_k
+        self._top_p = top_p
 
         assert sum([
             regex is not None,
@@ -556,27 +470,18 @@ class TextGenerator(TextProcessor):
 
     def generate(
         self,
-        inputs: Union[str, List[str]],
+        inputs: list[str | Chat],
         batch_size: int = 16,
         batch_max_tokens: Optional[int] = None,
         sort: bool = True,
         num_threads: Optional[int] = None,
         show_progress: bool = False,
     ) -> Union[str, List[str]]:
-        input_is_string = isinstance(inputs, str)
-        assert (
-            input_is_string
-            or (
-                isinstance(inputs, list)
-                and all(isinstance(ipt, str) for ipt in inputs)
-            )
-        ), "input needs to be a string or a list of strings"
-
-        if input_is_string:
-            inputs = [inputs]
-
         loader = self._get_loader(
-            (data.InferenceData(ipt) for ipt in inputs),
+            (
+                data.InferenceData(self.format_input(ipt))
+                for ipt in inputs
+            ),
             batch_size,
             batch_max_tokens,
             sort,
@@ -605,17 +510,14 @@ class TextGenerator(TextProcessor):
                 show_progress
             )
 
-        if input_is_string:
-            return next(iter(outputs)).text
-        else:
-            return [
-                output.text
-                for output in outputs
-            ]
+        return [
+            output.text
+            for output in outputs
+        ]
 
     def generate_iter(
         self,
-        iter: Iterator[str],
+        iter: Iterator[str | Chat],
         batch_size: int = 16,
         batch_max_tokens: Optional[int] = None,
         sort: bool = True,
@@ -624,7 +526,10 @@ class TextGenerator(TextProcessor):
         raw: bool = False
     ) -> Union[Iterator[str], Iterator[data.InferenceData]]:
         loader = self._get_loader(
-            (data.InferenceData(ipt) for ipt in iter),
+            (
+                data.InferenceData(self.format_input(ipt))
+                for ipt in iter
+            ),
             batch_size,
             batch_max_tokens,
             sort,
@@ -666,7 +571,7 @@ class TextGenerator(TextProcessor):
             text = inf.read()
 
         loader = self._get_loader(
-            iter([data.InferenceData(text)],),
+            iter([data.InferenceData(self.format_input(text))]),
             batch_size=1,
             sort=sort,
             num_threads=num_threads,

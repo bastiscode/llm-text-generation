@@ -31,6 +31,13 @@ class TextGenerationServer(TextProcessingServer):
                 return abort(Response(
                     "missing texts or chats in json", status=400
                 ))
+            elif chats is not None and texts is not None:
+                return abort(Response(
+                    "only one of texts or chats allowed",
+                    status=400
+                ))
+            elif chats is not None:
+                texts = chats
 
             search_strategy = json.get("search_strategy", "greedy")
             beam_width = json.get("beam_width", 5)
@@ -56,23 +63,8 @@ class TextGenerationServer(TextProcessingServer):
                     if isinstance(gen, Error):
                         return abort(gen.to_response())
                     assert isinstance(gen, TextGenerator)
-                    if chats is not None:
-                        if texts is not None:
-                            return abort(Response(
-                                "only one of texts or chats allowed",
-                                status=400
-                            ))
-                        texts = [
-                            gen.format_chat(chat)
-                            for chat in chats
-                        ]
-                    else:
-                        texts = [
-                            gen.format_chat([{"role": "user", "text": text}])
-                            for text in texts
-                        ]
                     gen.set_inference_options(
-                        strategy=search_strategy,
+                        sampling_strategy=search_strategy,
                         beam_width=beam_width,
                         sample_top_k=sample_top_k,
                         regex=regex,
