@@ -16,11 +16,11 @@ from text_utils.api.utils import (
     get_peft_config
 )
 from text_utils.inference import (
-    Beam,
     utils as inference_utils,
     search,
     beam_search
 )
+from text_utils.inference.utils import Beam
 
 from llm_text_generation.model import (
     Model,

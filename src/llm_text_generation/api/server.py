@@ -6,7 +6,17 @@ from flask import Response, jsonify, request, abort
 from text_utils.api.server import TextProcessingServer, Error
 from text_utils.api.utils import ProgressIterator
 
-from llm_text_generation.api.generator import TextGenerator
+from llm_text_generation.api.generator import Chat, TextGenerator
+
+
+def input_size(text: str | Chat) -> int:
+    if isinstance(text, str):
+        return len(text.encode("utf8"))
+
+    return sum(
+        len(m["text"].encode("utf8"))
+        for m in text
+    )
 
 
 class TextGenerationServer(TextProcessingServer):
@@ -80,7 +90,7 @@ class TextGenerationServer(TextProcessingServer):
 
                     iter = ProgressIterator(
                         (t for t in texts),
-                        size_fn=lambda e: len(e[0].encode("utf8"))
+                        size_fn=input_size
                     )
                     generated = list(gen.generate_iter(
                         iter,
