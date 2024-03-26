@@ -16,6 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input")
     parser.add_argument("model")
     parser.add_argument("-e", "--examples", type=str, default=None)
+    parser.add_argument("-l", "--label", action="store_true")
     return parser.parse_args()
 
 
@@ -43,7 +44,12 @@ def run(args: argparse.Namespace):
                 random.sample(examples, min(len(examples), 5))
             )
             results = run_model(p, r, args.model)
-            print("\t".join(f"{qid} {label}" for label, qid in results))
+            assert len(results) == 1
+            label, qid = results[0]
+            s = f"{entity}\t{qid}"
+            if args.label:
+                s += f"\t{label}"
+            print(s)
 
 
 if __name__ == "__main__":

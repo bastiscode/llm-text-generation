@@ -193,5 +193,5 @@ def load_samples(path: str) -> list[tuple[str, list[str]]]:
     with open(path) as inf:
         for line in inf:
             entity, types = line.rstrip("\r\n").split("\t")
-            samples.append((entity, [t.split()[0] for t in types.split(" ")]))
+            samples.append((entity, [t.split() for t in types.split(" ")]))
     return samples

@@ -14,27 +14,24 @@ from utils import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("train")
-    parser.add_argument("test")
+    parser.add_argument("input")
     parser.add_argument("model")
+    parser.add_argument("-e", "--examples", type=str, default=None)
     return parser.parse_args()
 
 
 def evaluate(args: argparse.Namespace):
-    train = load_samples(args.train)
-    test = load_samples(args.test)
+    test = load_samples(args.input)
 
     examples = []
-    for entity, types in tqdm(
-        train,
-        "preparing examples",
-        leave=False
-    ):
-        # only use in-context examples with unique natural types
-        if len(types) > 1:
-            continue
-        example, _ = format_entity(entity, types)
-        examples.append(example)
+    if args.exapmles is not None:
+        for entity, types in tqdm(
+            load_samples(args.examples),
+            "preparing examples",
+            leave=False
+        ):
+            example, _ = format_entity(entity, types)
+            examples.append(example)
 
     correct = 0
     incorrect = []
