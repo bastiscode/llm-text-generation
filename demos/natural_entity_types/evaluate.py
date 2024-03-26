@@ -17,6 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input")
     parser.add_argument("model")
     parser.add_argument("-e", "--examples", type=str, default=None)
+    parser.add_argument("-ne", "--num-examples", type=int, default=5)
     return parser.parse_args()
 
 
@@ -24,7 +25,7 @@ def evaluate(args: argparse.Namespace):
     test = load_samples(args.input)
 
     examples = []
-    if args.exapmles is not None:
+    if args.examples is not None:
         for entity, types in tqdm(
             load_samples(args.examples),
             "preparing examples",
@@ -38,7 +39,7 @@ def evaluate(args: argparse.Namespace):
     for entity, gt in tqdm(test, "evaluating", leave=False):
         p, r = get_prompt_and_regex(
             entity,
-            random.sample(examples, min(len(examples), 5)),
+            random.sample(examples, min(len(examples), args.num_examples)),
         )
         pred = run_model(p, r, args.model)
 
