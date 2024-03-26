@@ -16,6 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input")
     parser.add_argument("model")
     parser.add_argument("-e", "--examples", type=str, default=None)
+    parser.add_argument("-ne", "--num-examples", type=int, default=5)
     parser.add_argument("-l", "--label", action="store_true")
     return parser.parse_args()
 
@@ -28,9 +29,6 @@ def run(args: argparse.Namespace):
             "preparing examples",
             leave=False
         ):
-            # only use in-context examples with unique natural types
-            if len(types) > 1:
-                continue
             example, _ = format_entity(entity, types)
             examples.append(example)
 
@@ -41,7 +39,7 @@ def run(args: argparse.Namespace):
                 continue
             p, r = get_prompt_and_regex(
                 entity,
-                random.sample(examples, min(len(examples), 5))
+                random.sample(examples, min(len(examples), args.num_examples))
             )
             results = run_model(p, r, args.model)
             assert len(results) == 1
