@@ -7,7 +7,7 @@ from tqdm import tqdm
 from utils import (
     format_entity,
     get_prompt_and_regex,
-    load_benchmark,
+    load_samples,
     run_model
 )
 
@@ -21,8 +21,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def evaluate(args: argparse.Namespace):
-    train = load_benchmark(args.train)
-    test = load_benchmark(args.test)
+    train = load_samples(args.train)
+    test = load_samples(args.test)
 
     examples = []
     for entity, types in tqdm(
