@@ -62,7 +62,16 @@ SELECT DISTINCT
 (MAX(?score) AS ?s)
 # (GROUP_CONCAT(?alias; SEPARATOR=";") AS ?a)
 WHERE {{
-   wd:{entity} (wdt:P31/wdt:P279*)|wdt:P279+|wdt:P106 ?typ .
+   wd:{entity} (
+     wdt:P31
+     | wdt:P31/wdt:P279
+     | wdt:P31/wdt:P279/wdt:P279
+     | wdt:P31/wdt:P279/wdt:P279/wdt:P279
+     | wdt:P279
+     | wdt:P279/wdt:P279
+     | wdt:P279/wdt:P279/wdt:P279
+     | wdt:P279/wdt:P279/wdt:P279/wdt:P279
+   ) ?typ .
    ?typ @en@rdfs:label ?label .
    OPTIONAL {{ ?typ @en@schema:description ?desc . }}
    # OPTIONAL {{ ?typ @en@skos:altLabel ?alias . }}
