@@ -41,7 +41,7 @@ def evaluate(args: argparse.Namespace):
             entity,
             random.sample(examples, min(len(examples), args.num_examples)),
         )
-        pred = run_model(p, r, args.model)
+        pred = run_model([p], [r], args.model)[0]
 
         if any(p in gt for _, p in pred):
             correct += 1

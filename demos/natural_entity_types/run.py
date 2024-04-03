@@ -69,19 +69,23 @@ def run(args: argparse.Namespace):
                 args.api
             )
 
-            for entity, result in zip(entities[i: i + args.batch_size], results):
+            for entity, result in zip(
+                entities[i: i + args.batch_size],
+                results
+            ):
                 s = f"{entity}\t"
                 if len(result) == 0:
                     if args.label:
                         s += "\t"
-                    print(s)
+                    print(s, flush=True)
+                    continue
 
                 assert len(result) == 1
                 label, qid = result[0]
                 s += qid
                 if args.label:
                     s += f"\t{label}"
-                print(s)
+                print(s, flush=True)
 
 
 if __name__ == "__main__":

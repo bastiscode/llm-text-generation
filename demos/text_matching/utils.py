@@ -1,7 +1,7 @@
 import requests
 from json import dumps
 
-QLEVER_URL = "https://qlever.cs.uni-freiburg.de/api/wikidata-sebastian"
+QLEVER_URL = "https://qlever.cs.uni-freiburg.de/api/wikidata"
 MODEL_URL = "https://ad-llm.cs.uni-freiburg.de/api/generate"
 
 
@@ -113,7 +113,10 @@ def run_model(
 ) -> list[int] | list[list[int]]:
     data = {
         "model": model,
-        "texts": texts,
+        "inputs": [
+            {"text": text}
+            for text in texts
+        ],
         "constraint": {
             "type": "regex",
             "regex": get_regex(),
@@ -128,7 +131,7 @@ def run_model(
     )
     json = response.json()
     outputs = []
-    for t in json["texts"]:
+    for t in json["outputs"]:
         score = int(t.strip())
         outputs.append(score)
     return outputs

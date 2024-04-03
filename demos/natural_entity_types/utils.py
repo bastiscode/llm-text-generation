@@ -2,7 +2,7 @@ import requests
 from re import escape
 from json import dumps
 
-QLEVER_URL = "https://qlever.cs.uni-freiburg.de/api/wikidata-sebastian"
+QLEVER_URL = "https://qlever.cs.uni-freiburg.de/api/wikidata"
 MODEL_URL = "https://ad-llm.cs.uni-freiburg.de/api/generate"
 
 
