@@ -114,7 +114,10 @@ def run_model(
     data = {
         "model": model,
         "texts": texts,
-        "regex": get_regex(),
+        "constraint": {
+            "type": "regex",
+            "regex": get_regex(),
+        },
         "beam_width": 4,
         "sampling_strategy": "greedy",
     }
