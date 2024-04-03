@@ -171,29 +171,39 @@ def get_prompt_and_regex(
 
 
 def run_model(
-    text: str,
-    regex: str,
-    model: str
-) -> list[tuple[str, str]]:
+    texts: list[str],
+    regexes: list[str],
+    model: str,
+    url: str | None = None
+) -> list[list[tuple[str, str]]]:
     data = {
         "model": model,
-        "texts": [text],
-        "regex": regex,
         "beam_width": 1,
         "sampling_strategy": "greedy",
+        "inputs": [
+            {"text": text, "constraint": {"type": "regex", "regex": regex}}
+            for text, regex, in zip(texts, regexes)
+        ]
     }
     response = requests.post(
-        MODEL_URL,
+        url or MODEL_URL,
         headers={"Content-type": "application/json"},
         data=dumps(data)
     )
-    json = response.json()
+    try:
+        json = response.json()
+    except Exception:
+        raise RuntimeError(response.text)
+
     outputs = []
-    for t in json["texts"][0].split("\n"):
-        if t == "":
-            continue
-        splits = t.strip().split(" ")
-        outputs.append((" ".join(splits[:-1]), splits[-1]))
+    for output in json["outputs"]:
+        types = []
+        for t in output.split("\n"):
+            if t == "":
+                continue
+            splits = t.strip().split(" ")
+            types.append((" ".join(splits[:-1]), splits[-1]))
+        outputs.append(types)
     return outputs
 
 

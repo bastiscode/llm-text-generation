@@ -6,17 +6,32 @@ from flask import Response, jsonify, request, abort
 from text_utils.api.server import TextProcessingServer, Error
 from text_utils.api.utils import ProgressIterator
 
-from llm_text_generation.api.generator import Chat, TextGenerator
+from llm_text_generation.api.generator import Chat, Constraint, TextGenerator
 
 
-def input_size(text: str | Chat) -> int:
-    if isinstance(text, str):
-        return len(text.encode("utf8"))
+def input_size(ipt: str | Chat | tuple[str | Chat, Constraint]) -> int:
+    if isinstance(ipt, tuple):
+        ipt, _ = ipt
+
+    if isinstance(ipt, str):
+        return len(ipt.encode("utf8"))
 
     return sum(
         len(m["text"].encode("utf8"))
-        for m in text
+        for m in ipt
     )
+
+
+def parse_constraint(json: dict[str, Any] | None) -> Constraint | None:
+    if json is None:
+        return None
+    typ = json["type"]
+    if typ == "regex":
+        return json["regex"]
+    elif typ == "lr1":
+        return (json["grammar"], json["lexer"], json.get("exact", False))
+    else:
+        raise ValueError(f"invalid constraint type: {typ}")
 
 
 class TextGenerationServer(TextProcessingServer):
@@ -34,20 +49,29 @@ class TextGenerationServer(TextProcessingServer):
                 return abort(Response("request body must be json", status=400))
             elif "model" not in json:
                 return abort(Response("missing model in json", status=400))
+            elif "inputs" not in json:
+                return abort(Response("missing inputs in json", status=400))
 
-            texts = json.get("texts", None)
-            chats = json.get("chats", None)
-            if texts is None and chats is None:
-                return abort(Response(
-                    "missing texts or chats in json", status=400
-                ))
-            elif chats is not None and texts is not None:
-                return abort(Response(
-                    "only one of texts or chats allowed",
-                    status=400
-                ))
-            elif chats is not None:
-                texts = chats
+            inputs = []
+            for input in json["inputs"]:
+                text = input.get("text", None)
+                chat = input.get("chat", None)
+                if text is None and chat is None:
+                    return abort(Response(
+                        "missing text or chat in input", status=400
+                    ))
+                elif text is not None and chat is not None:
+                    return abort(Response(
+                        "text and chat are mutually exclusive", status=400
+                    ))
+                else:
+                    ipt = text or chat
+
+                constraint = parse_constraint(input.get("constraint", None))
+                if constraint is None:
+                    inputs.append(ipt)
+                else:
+                    inputs.append((ipt, constraint))
 
             sampling_strategy = json.get("sampling_strategy", "greedy")
             beam_width = json.get("beam_width", None)
@@ -55,20 +79,8 @@ class TextGenerationServer(TextProcessingServer):
             top_p = json.get("top_p", 0.95)
             temp = json.get("temperature", 1.0)
             max_length = json.get("max_length", None)
-            regex = json.get("regex", None)
-            cfg = json.get("cfg", {})
-            grammar = cfg.get("grammar", None)
-            lexer = cfg.get("lexer", None)
-            exact = cfg.get("exact", False)
-            if regex is not None and len(cfg):
-                return abort(Response(
-                    "can only provide one of regex or cfg", status=400
-                ))
 
-            if grammar is not None and lexer is not None:
-                cfg = (grammar, lexer, exact)
-            else:
-                cfg = None
+            constraint = parse_constraint(json.get("constraint", None))
 
             try:
                 with self.text_processor(json["model"]) as gen:
@@ -81,18 +93,17 @@ class TextGenerationServer(TextProcessingServer):
                         top_k=top_k,
                         top_p=top_p,
                         beam_width=beam_width,
-                        regex=regex,
-                        cfg=cfg,
+                        constraint=constraint,
                         use_cache=self.use_cache,
                         max_length=max_length
                     )
                     start = time.perf_counter()
 
                     iter = ProgressIterator(
-                        (t for t in texts),
+                        (ipt for ipt in inputs),
                         size_fn=input_size
                     )
-                    generated = list(gen.generate_iter(
+                    outputs = list(gen.generate_iter(
                         iter,
                         batch_size=self.batch_size,
                     ))
@@ -102,7 +113,7 @@ class TextGenerationServer(TextProcessingServer):
                     s = end - start
 
                     output = {
-                        "texts": generated,
+                        "outputs": outputs,
                         "runtime": {"b": b, "s": s},
                     }
                     return jsonify(output)

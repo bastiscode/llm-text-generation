@@ -22,15 +22,18 @@ class TextGenerationCli(TextProcessingCli):
         # perform some additional setup
         assert isinstance(gen, TextGenerator)
 
-        if self.args.lr1_grammar is not None:
-            cfg = (*self.args.lr1_grammar, self.args.lr1_exact)
-        else:
-            cfg = None
-
-        if self.args.lr1_grammar_files is not None:
-            cfg_files = (*self.args.lr1_grammar_files, self.args.lr1_exact)
-        else:
-            cfg_files = None
+        constraint = None
+        if self.args.regex is not None:
+            constraint = self.args.regex
+        elif self.args.regex_file is not None:
+            with open(self.args.regex_file, "r") as f:
+                constraint = f.read()
+        elif self.args.lr1_grammar is not None:
+            constraint = (*self.args.lr1_grammar, self.args.lr1_exact)
+        elif self.args.lr1_grammar_files is not None:
+            with open(self.args.lr1_grammar_files[0], "r") as f1, \
+                    open(self.args.lr1_grammar_files[1], "r") as f2:
+                constraint = (f1.read(), f2.read(), self.args.lr1_exact)
 
         gen.set_inference_options(
             sampling_strategy=self.args.sampling_strategy,
@@ -38,10 +41,7 @@ class TextGenerationCli(TextProcessingCli):
             top_k=self.args.top_k,
             top_p=self.args.top_p,
             beam_width=self.args.beam_width,
-            regex=self.args.regex,
-            regex_file=self.args.regex_file,
-            cfg=cfg,
-            cfg_files=cfg_files,
+            constraint=constraint,
             max_length=self.args.max_length,
             use_cache=not self.args.no_kv_cache,
             full_outputs=self.args.full_outputs
