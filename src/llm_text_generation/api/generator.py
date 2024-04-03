@@ -258,8 +258,6 @@ class TextGenerator(TextProcessor):
         self,
         inputs: Dict[str, Any],
     ) -> list[Any]:
-        batch_size = len(inputs["token_ids"])
-        inference_kwargs = {}
         initial_token_ids = [
             list(token_ids[:length])
             for token_ids, length in zip(
@@ -365,7 +363,6 @@ class TextGenerator(TextProcessor):
                 candidate_fn=candidate_fn,
                 logit_fns=logit_fns,
                 kwargs_update_fn=_kwargs_update_fn,
-                **inference_kwargs
             )
             return [output[0].token_ids for output in outputs]
 
@@ -414,7 +411,6 @@ class TextGenerator(TextProcessor):
             stop_fn=stop_fn,
             device=self.devices[0],
             kwargs_update_fn=_kwargs_update_fn,
-            **inference_kwargs
         )
 
     def _process_results(

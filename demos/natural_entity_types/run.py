@@ -1,5 +1,7 @@
 import argparse
+import os
 import random
+from multiprocessing import Pool
 
 from tqdm import tqdm
 
@@ -17,13 +19,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("model")
     parser.add_argument("-a", "--api", type=str, default=None)
     parser.add_argument("-e", "--examples", type=str, default=None)
+    parser.add_argument("-n", "--num-processes", type=int, default=None)
     parser.add_argument("-ne", "--num-examples", type=int, default=5)
     parser.add_argument("-l", "--label", action="store_true")
     parser.add_argument("-b", "--batch-size", type=int, default=8)
     return parser.parse_args()
 
 
+def get_inputs(inputs):
+    return get_prompt_and_regex(*inputs)
+
+
 def run(args: argparse.Namespace):
+    if args.num_processes is None:
+        cpus = len(os.sched_getaffinity(0))
+        args.num_processes = min(args.batch_size, cpus)
+
     examples = []
     if args.examples is not None:
         for entity, types in tqdm(
@@ -35,47 +46,42 @@ def run(args: argparse.Namespace):
             examples.append(example)
 
     entities = []
-    prompts = []
-    regexes = []
     with open(args.input) as inf:
         for line in inf:
-            entity = line.strip()
-            if entity == "":
-                continue
+            entities.append(line.strip())
 
-            entities.append(entity)
-            p, r = get_prompt_and_regex(
-                entity,
+    with Pool(args.num_processes) as pool:
+        for i in range(0, len(entities), args.batch_size):
+            batch_entities = entities[i: i + args.batch_size]
+            batch_examples = [
                 random.sample(examples, min(len(examples), args.num_examples))
+                for _ in range(len(batch_entities))
+            ]
+            prompts, regexes = zip(*pool.map(
+                get_inputs,
+                zip(batch_entities, batch_examples)
+            ))
+
+            results = run_model(
+                prompts,  # type: ignore
+                regexes,  # type: ignore
+                args.model,
+                args.api
             )
-            prompts.append(p)
-            regexes.append(r)
 
-    for i in range(0, len(prompts), args.batch_size):
-        prompt_batch = prompts[i: i + args.batch_size]
-        regex_batch = regexes[i: i + args.batch_size]
-        entity_batch = entities[i: i + args.batch_size]
+            for entity, result in zip(entities[i: i + args.batch_size], results):
+                s = f"{entity}\t"
+                if len(result) == 0:
+                    if args.label:
+                        s += "\t"
+                    print(s)
 
-        results = run_model(
-            prompt_batch,
-            regex_batch,
-            args.model,
-            args.api
-        )
-
-        for entity, result in zip(entity_batch, results):
-            s = f"{entity}\t"
-            if len(result) == 0:
+                assert len(result) == 1
+                label, qid = result[0]
+                s += qid
                 if args.label:
-                    s += "\t"
+                    s += f"\t{label}"
                 print(s)
-
-            assert len(result) == 1
-            label, qid = result[0]
-            s += qid
-            if args.label:
-                s += f"\t{label}"
-            print(s)
 
 
 if __name__ == "__main__":

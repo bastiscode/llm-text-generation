@@ -204,6 +204,12 @@ def run_model(
             splits = t.strip().split(" ")
             types.append((" ".join(splits[:-1]), splits[-1]))
         outputs.append(types)
+
+    for t in json["outputs"][0].split("\n"):
+        if t == "":
+            continue
+        splits = t.strip().split(" ")
+        outputs.append((" ".join(splits[:-1]), splits[-1]))
     return outputs
 
 
