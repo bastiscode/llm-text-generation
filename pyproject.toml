@@ -23,6 +23,7 @@ dependencies = [
     "dtpu>=0.4.0",
     "transformers>=4.37.0",
     "peft>=0.8.0",
+    "bitsandbytes>=0.42.0",
     "auto-gptq>=0.6.0",
     "tqdm>=4.60.0"
 ]
