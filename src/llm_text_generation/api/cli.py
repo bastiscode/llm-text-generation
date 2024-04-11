@@ -1,9 +1,8 @@
 from io import TextIOWrapper
-from typing import Iterator, Optional, Union
+from typing import Iterator
 
 from text_utils.api.cli import TextProcessingCli
 from text_utils.api.processor import TextProcessor
-from text_utils import data
 
 from llm_text_generation import version
 from llm_text_generation.api.generator import TextGenerator
@@ -51,32 +50,32 @@ class TextGenerationCli(TextProcessingCli):
     def process_iter(
         self,
         processor: TextGenerator,
-        input: Iterator[data.InferenceData]
-    ) -> Iterator[data.InferenceData]:
-        # collapse all text from iterator into a single sample
-        text: str = "\n".join(item.text for item in input)
-
+        iter: Iterator[str]
+    ) -> Iterator[str]:
         yield from processor.generate_iter(
-            iter([text]),
+            iter,
+            batch_size=self.args.batch_size,
+            batch_max_tokens=self.args.batch_max_tokens,
             sort=not self.args.unsorted,
             num_threads=self.args.num_threads,
             show_progress=self.args.progress,
-            raw=True
         )
 
     def process_file(
         self,
         processor: TextGenerator,
-        path: str,
-        _: Optional[str],
-        out_file: Union[str, TextIOWrapper]
+        input_file: str,
+        output_file: str | TextIOWrapper
     ):
         processor.generate_file(
-            path,
-            out_file,
-            not self.args.unsorted,
-            self.args.num_threads,
-            show_progress=self.args.progress
+            input_file,
+            output_file,
+            batch_size=self.args.batch_size,
+            batch_max_tokens=self.args.batch_max_tokens,
+            sort=not self.args.unsorted,
+            num_threads=self.args.num_threads,
+            show_progress=self.args.progress,
+            format=self.args.file_format
         )
 
 
@@ -173,6 +172,13 @@ def main():
         action="store_true",
         help="Whether to return input and generated text as output "
         "(default is only generated text)"
+    )
+    parser.add_argument(
+        "--file-format",
+        choices=["jsonl", "lines", "text"],
+        default="lines",
+        help="Whether to treat input/output files as jsonl, line-separated, "
+        "or single piece of text"
     )
     args = parser.parse_args()
     # set default device to auto if not set

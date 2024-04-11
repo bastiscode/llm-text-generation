@@ -1,7 +1,8 @@
 from io import TextIOWrapper
 import os
+import json
 import sys
-from typing import Any, Dict, List, Tuple, Optional, Union, Iterator
+from typing import Any, Iterator
 
 import torch
 from torch import nn
@@ -21,6 +22,7 @@ from text_utils.inference import (
     beam_search
 )
 from text_utils.inference.utils import Beam
+from text_utils.constraints import Constraint
 
 from llm_text_generation.model import (
     Model,
@@ -32,29 +34,15 @@ _BASE_URL = ""
 _NAME_TO_ZIP = {}
 
 Chat = list[dict[str, str]]
-Constraint = str | tuple[str, str, bool]
+Const = str | tuple[str, str, bool]
 
 
 class TextGenerator(TextProcessor):
     task = "Text Generation"
 
     @classmethod
-    def available_models(cls) -> List[ModelInfo]:
-        return [
-            ModelInfo(
-                name="dummy",
-                description="a dummy model",
-                tags=["default", "dummy"]
-            ),
-        ]
-
-    @classmethod
-    def supported_input_formats(cls) -> List[str]:
-        return ["text"]
-
-    @classmethod
-    def supported_output_formats(cls) -> List[str]:
-        return ["text"]
+    def available_models(cls) -> list[ModelInfo]:
+        return []
 
     @classmethod
     def _model_url(cls, model: str) -> str:
@@ -67,7 +55,7 @@ class TextGenerator(TextProcessor):
     @classmethod
     def _model_from_config(
         cls,
-        cfg: Dict[str, Any],
+        cfg: dict[str, Any],
         _: Device
     ) -> nn.Module:
         model = model_from_config(cfg["model"])
@@ -92,16 +80,10 @@ class TextGenerator(TextProcessor):
     def context_length(self) -> int:
         raise NotImplementedError
 
-    def supported_languages(self) -> Optional[List[str]]:
-        lang_cfg = self.cfg["input_tokenizer"].get("language")
-        if lang_cfg is None:
-            return None
-        return lang_cfg["languages"]
-
     def __init__(
         self,
         model: Model,
-        cfg: Dict[str, Any],
+        cfg: dict[str, Any],
         device: Device
     ) -> None:
         super().__init__(model, cfg, device)
@@ -129,7 +111,7 @@ class TextGenerator(TextProcessor):
         # (already sorted by token id)
         self._continuations = self.output_tokenizer.get_vocab()
         self._sampling_strategy = "greedy"
-        self._beam_width = 5
+        self._beam_width = 1
         self._temp = 1.0
         self._top_k = 5
         self._use_cache = True
@@ -143,14 +125,14 @@ class TextGenerator(TextProcessor):
         self.model = self.model.distribute(self.devices)
         return self
 
-    def _build_inference_loader_config(self) -> Dict[str, Any]:
+    def _build_inference_loader_config(self) -> dict[str, Any]:
         return {
             "tokenizer_config": self.cfg["input_tokenizer"],
             "window_config": {"type": "full"},
             "clean_text": False
         }
 
-    def _prepare_batch(self, batch: data.InferenceBatch) -> Dict[str, Any]:
+    def _prepare_batch(self, batch: data.InferenceBatch) -> dict[str, Any]:
         token_ids_np, _, lengths, *_ = batch.tensors()
         return {
             "token_ids": token_ids_np,
@@ -158,14 +140,21 @@ class TextGenerator(TextProcessor):
             "infos": batch.infos()
         }
 
-    def _format_input(
+    def _prepare_input(
         self,
-        ipt: str | Chat | tuple[str | Chat, Constraint],
+        ipt: str | Chat | tuple[str | Chat, Const],
+        json_decode: bool = False
     ) -> data.InferenceData:
+        info = {}
         if isinstance(ipt, tuple):
             ipt, constraint = ipt
-        else:
-            constraint = None
+            info["constraint"] = constraint
+
+        if json_decode:
+            assert isinstance(ipt, str)
+            ipt = json.loads(ipt)
+            assert isinstance(ipt, (str, list)), \
+                "expected text or chat as json encoded string"
 
         if isinstance(ipt, str):
             ipt = [{"role": "user", "text": ipt}]
@@ -182,81 +171,11 @@ class TextGenerator(TextProcessor):
                     message["text"]
                 )
 
-        return data.InferenceData(text, {"constraint": constraint})
-
-    def _constraint_logit_fn(
-        self,
-        constraints: list | None
-    ) -> inference_utils.LogitFn:
-        def _constrain_logits(
-            logits: torch.Tensor,
-            indices_or_beams:  list[int] | list[Beam]
-        ) -> torch.Tensor:
-            zeros = torch.full_like(logits, float("-inf"))
-
-            batch_indices = []
-            constrain_indices = []
-            for i, idx_or_beam in enumerate(indices_or_beams):
-                if isinstance(idx_or_beam, int):
-                    assert constraints is not None
-                    constraint = constraints[idx_or_beam]
-                else:
-                    assert constraints is None
-                    constraint = idx_or_beam.info.get("constraint", None)
-
-                if constraint is None:
-                    zeros[i] = logits[i]
-                    continue
-
-                constrain_to, is_match = constraint.get()
-
-                batch_indices.extend([i] * len(constrain_to))
-                constrain_indices.extend(constrain_to)
-
-                if len(constrain_to) == 0 or is_match:
-                    batch_indices.append(i)
-                    constrain_indices.append(self._eos_token_id)
-
-            batch_indices = torch.tensor(batch_indices, device=logits.device)
-            constrain_indices = torch.tensor(
-                constrain_indices,
-                device=logits.device
-            )
-
-            zeros[batch_indices, constrain_indices] = logits[
-                batch_indices,
-                constrain_indices
-            ]
-
-            return zeros
-
-        return _constrain_logits
-
-    def _constraint_sample_fn(
-        self,
-        constraints: list,
-        sample_fn: inference_utils.SampleFn
-    ) -> inference_utils.SampleFn:
-        def _sample(
-            logits: torch.Tensor,
-            indices: list[int]
-        ) -> torch.Tensor:
-            token_ids = sample_fn(logits, indices)
-            for idx, token_id in zip(indices, token_ids.tolist()):
-                if token_id == self._eos_token_id:
-                    continue
-
-                constraint = constraints[idx]
-                if constraint is not None:
-                    constraint.next(token_id)
-
-            return token_ids
-
-        return _sample
+        return data.InferenceData(text, info)
 
     def _inference(
         self,
-        inputs: Dict[str, Any],
+        inputs: dict[str, Any],
     ) -> list[Any]:
         initial_token_ids = [
             list(token_ids[:length])
@@ -271,7 +190,7 @@ class TextGenerator(TextProcessor):
         def _decode_fn(
             token_ids: torch.Tensor,
             **kwargs: Any
-        ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        ) -> tuple[torch.Tensor, dict[str, Any]]:
             assert isinstance(self.model, PretrainedDecoder)
             dec, cache = self.model.decode(
                 token_ids,
@@ -282,8 +201,8 @@ class TextGenerator(TextProcessor):
             return dec, {"kv_cache": cache}
 
         def _kwargs_update_fn(
-            kwargs: Dict[str, Any],
-            info: Dict[str, Any],
+            kwargs: dict[str, Any],
+            info: dict[str, Any],
             mask: torch.Tensor
         ) -> None:
             kv_cache = info.get("kv_cache", None)
@@ -294,26 +213,35 @@ class TextGenerator(TextProcessor):
                 for cache in info["kv_cache"]
             )
 
-        if self._beam_width is not None and self._beam_width > 1:
+        if (self._beam_width or 1) > 1:
+            assert self._beam_width is not None
             logit_fns = []
             initial_beams = []
             for token_ids, info in zip(initial_token_ids, inputs["infos"]):
                 beam = Beam(token_ids, [0.0] * len(token_ids))
 
-                constraint = self._get_constraint(info.get("constraint", None))
-                if constraint is None and self._constraint is not None:
+                if "constraint" in info:
+                    beam.info["constraint"] = self._get_constraint(
+                        info["constraint"]
+                    )
+                elif self._constraint is not None:
                     constraint = self._constraint.clone()
                     constraint.reset()
-
-                beam.info["constraint"] = constraint
+                    beam.info["constraint"] = constraint
 
                 initial_beams.append(beam)
 
+            # add constrain logit fn if any of the beams have a constraint
             if any(
-                beam.info.get("constraint", None) is not None
+                "constraint" in beam.info
                 for beam in initial_beams
             ):
-                logit_fns.append(self._constraint_logit_fn(None))
+                logit_fns.append(inference_utils.constraint_logit_fn(
+                    lambda beam: beam.info.get(
+                        "constraint", None
+                    ) if isinstance(beam, Beam) else None,
+                    self._eos_token_id
+                ))
 
                 def _update_beam(beam: Beam, token_id: int, log_p: float):
                     new_beam = Beam.from_beam(beam, token_id, log_p)
@@ -367,18 +295,24 @@ class TextGenerator(TextProcessor):
             return [output[0].token_ids for output in outputs]
 
         logit_fns = []
-        constraints: list | None = []
-        for info in inputs["infos"]:
-            constraint = self._get_constraint(info.get("constraint", None))
-            if constraint is None and self._constraint is not None:
+        constraints: dict[int, Constraint] = {}
+        for i, info in enumerate(inputs["infos"]):
+            if "constraint" in info:
+                constraints[i] = self._get_constraint(info["constraint"])
+            elif self._constraint is not None:
                 constraint = self._constraint.clone()
                 constraint.reset()
-            constraints.append(constraint)
+                constraints[i] = constraint
 
-        if any(c is not None for c in constraints):
-            # add a logit fn that masks out tokens that are
-            # not in the constraint
-            logit_fns.append(self._constraint_logit_fn(constraints))
+        # add constrain logit fn if any of the batch elements
+        # has a constraint
+        if len(constraints) > 0:
+            logit_fns.append(inference_utils.constraint_logit_fn(
+                lambda idx: constraints.get(
+                    idx, None
+                ) if isinstance(idx, int) else None,
+                self._eos_token_id
+            ))
 
         if self._sampling_strategy == "greedy":
             sample_fn = inference_utils.greedy()
@@ -394,9 +328,14 @@ class TextGenerator(TextProcessor):
                 self._temp
             ))
 
-        if constraints is not None:
-            # after sampling a token, update the constraint
-            sample_fn = self._constraint_sample_fn(constraints, sample_fn)
+        # if there are constraints we need to update them
+        # after sampling a token
+        if len(constraints) > 0:
+            sample_fn = inference_utils.constraint_sample_fn(
+                lambda idx: constraints.get(idx, None),
+                sample_fn,
+                self._eos_token_id
+            )
 
         def stop_fn(token_ids: torch.Tensor, _: list[int]) -> torch.Tensor:
             return token_ids == self._eos_token_id
@@ -429,14 +368,14 @@ class TextGenerator(TextProcessor):
 
     def _get_constraint(
         self,
-        constraint: Constraint | None
-    ) -> grammar.RegexConstraint | grammar.LR1Constraint | None:
+        constraint: Const
+    ) -> Constraint:
         if isinstance(constraint, str):
             return grammar.RegexConstraint(
                 constraint,
                 self._continuations
             )
-        elif isinstance(constraint, tuple):
+        else:
             gram, lexer, exact = constraint
             return grammar.LR1Constraint(
                 gram,
@@ -444,8 +383,6 @@ class TextGenerator(TextProcessor):
                 self._continuations,
                 exact
             )
-        else:
-            return None
 
     def set_inference_options(
         self,
@@ -454,7 +391,7 @@ class TextGenerator(TextProcessor):
         top_k: int = 10,
         top_p: float = 0.95,
         beam_width: int | None = None,
-        constraint: Constraint | None = None,
+        constraint: Const | None = None,
         max_length: int | None = None,
         use_cache: bool = True,
         full_outputs: bool = False
@@ -465,28 +402,26 @@ class TextGenerator(TextProcessor):
         self._temp = temperature
         self._top_k = top_k
         self._top_p = top_p
-        self._constraint = self._get_constraint(constraint)
+        if constraint is not None:
+            self._constraint = self._get_constraint(constraint)
+        else:
+            self._constraint = None
         self._max_length = max_length
         self._use_cache = use_cache
         self._full_outputs = full_outputs
 
     def generate(
         self,
-        inputs: list[str | Chat | tuple[str | Chat, Constraint]],
+        inputs: list[str | Chat | tuple[str | Chat, Const]],
         batch_size: int = 16,
-        batch_max_tokens: Optional[int] = None,
+        batch_max_tokens: int | None = None,
         sort: bool = True,
-        num_threads: Optional[int] = None,
+        num_threads: int | None = None,
         show_progress: bool = False,
-        regexes: list[str] | None = None,
-        cfgs: list[tuple[str, str, bool]] | None = None
-    ) -> Union[str, List[str]]:
-        self._regexes = regexes
-        self._cfgs = cfgs
-
+    ) -> str | list[str]:
         loader = self._get_loader(
             (
-                self._format_input(ipt)
+                self._prepare_input(ipt)
                 for ipt in inputs
             ),
             batch_size,
@@ -524,17 +459,16 @@ class TextGenerator(TextProcessor):
 
     def generate_iter(
         self,
-        iter: Iterator[str | Chat | tuple[str | Chat, Constraint]],
+        iter: Iterator[str | Chat | tuple[str | Chat, Const]],
         batch_size: int = 16,
-        batch_max_tokens: Optional[int] = None,
+        batch_max_tokens: int | None = None,
         sort: bool = True,
-        num_threads: Optional[int] = None,
+        num_threads: int | None = None,
         show_progress: bool = False,
-        raw: bool = False
-    ) -> Union[Iterator[str], Iterator[data.InferenceData]]:
+    ) -> Iterator[str]:
         loader = self._get_loader(
             (
-                self._format_input(ipt)
+                self._prepare_input(ipt)
                 for ipt in iter
             ),
             batch_size,
@@ -564,24 +498,36 @@ class TextGenerator(TextProcessor):
                 show_progress
             )
 
-        yield from (output if raw else output.text for output in outputs)
+        return (output.text for output in outputs)
 
     def generate_file(
         self,
         input_file: str,
-        output_file: Optional[Union[TextIOWrapper, str]] = None,
+        output_file: TextIOWrapper | str | None = None,
+        batch_size: int = 16,
+        batch_max_tokens: int | None = None,
         sort: bool = True,
-        num_threads: Optional[int] = None,
+        num_threads: int | None = None,
         show_progress: bool = False,
-    ) -> Optional[Iterator[str]]:
-        with open(input_file, "r", encoding="utf8") as inf:
-            text = inf.read()
+        format: str = "jsonl"
+    ) -> Iterator[str] | None:
+        assert format in ["jsonl", "lines", "text"], \
+            f"invalid format {format}, must be jsonl, lines, or text"
+
+        if format == "lines" or format == "jsonl":
+            inputs = (
+                self._prepare_input(line.rstrip("\r\n"), format == "jsonl")
+                for line in open(input_file, "r")
+            )
+        else:
+            inputs = iter([open(input_file, "r").read()])
 
         loader = self._get_loader(
-            iter([self._format_input(text)]),
-            batch_size=1,
-            sort=sort,
-            num_threads=num_threads,
+            inputs,
+            batch_size,
+            batch_max_tokens,
+            sort,
+            num_threads,
         )
 
         file_name = input_file \
@@ -616,7 +562,15 @@ class TextGenerator(TextProcessor):
                 output_file = open(output_file, "w", encoding="utf8")
 
             for output in outputs:
-                output_file.write(f"{output.to_str('text')}\n")
+                text = output.text
+                if format == "jsonl":
+                    text = json.dumps(text)
+                elif format == "lines" and "\n" in text:
+                    raise ValueError(
+                        "output contains newline, "
+                        "lines format is not supported in this case"
+                    )
+                output_file.write(text + "\n")
 
             if output_file_is_str:
                 output_file.close()

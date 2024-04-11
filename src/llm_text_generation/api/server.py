@@ -6,10 +6,10 @@ from flask import Response, jsonify, request, abort
 from text_utils.api.server import TextProcessingServer, Error
 from text_utils.api.utils import ProgressIterator
 
-from llm_text_generation.api.generator import Chat, Constraint, TextGenerator
+from llm_text_generation.api.generator import Chat, Const, TextGenerator
 
 
-def input_size(ipt: str | Chat | tuple[str | Chat, Constraint]) -> int:
+def input_size(ipt: str | Chat | tuple[str | Chat, Const]) -> int:
     if isinstance(ipt, tuple):
         ipt, _ = ipt
 
@@ -22,7 +22,7 @@ def input_size(ipt: str | Chat | tuple[str | Chat, Constraint]) -> int:
     )
 
 
-def parse_constraint(json: dict[str, Any] | None) -> Constraint | None:
+def parse_constraint(json: dict[str, Any] | None) -> Const | None:
     if json is None:
         return None
     typ = json["type"]
