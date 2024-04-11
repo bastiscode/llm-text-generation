@@ -9,20 +9,9 @@ input_tokenizer:
   tokenize:
     path: relpath(gpt2/tokenizer.json)
     type: huggingface
-  type: gpt2
 model:
   name: env(GPT2_MODEL:gpt2-xl)
   type: pretrained_decoder
-output_tokenizer:
-  eos_token: <|endoftext|>
-  special:
-    pad: <|endoftext|>
-    tokens:
-    - <|endoftext|>
-  tokenize:
-    path: relpath(gpt2/tokenizer.json)
-    type: huggingface
-  type: gpt2
 seed: 22
 train:
   compile: true

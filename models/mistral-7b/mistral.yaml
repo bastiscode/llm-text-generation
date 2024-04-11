@@ -1,19 +1,19 @@
 experiment:
-  name: env(LLAMA2_MODEL:llama-2-7b)
+  name: mistral-7b
 input_tokenizer:
   tokenize:
     type: huggingface
-    path: relpath(llama-2/tokenizer.json)
+    path: relpath(mistral/tokenizer.json)
   special:
     tokens:
       - <unk>
     pad: <unk>
   eos_token: </s>
 model:
-  name: env(LLAMA2_MODEL:llama-2-7b)
+  name: mistral-7b
   type: pretrained_decoder
 seed: 22
 train:
-  precision: fp16
+  precision: bfp16
   data:
-    max_length: 4096
+    max_length: 8192

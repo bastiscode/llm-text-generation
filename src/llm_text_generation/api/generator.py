@@ -93,23 +93,19 @@ class TextGenerator(TextProcessor):
             f"running {self.name} text generator "
             f"on devices {[device_info(d) for d in self.devices]}"
         )
-        self.input_tokenizer = tokenization.Tokenizer.from_config(
+        self.tokenizer = tokenization.Tokenizer.from_config(
             self.cfg["input_tokenizer"]
-        )
-        assert "output_tokenizer" in self.cfg
-        self.output_tokenizer = tokenization.Tokenizer.from_config(
-            self.cfg["output_tokenizer"]
         )
 
         # some options for inference
-        self._eos_token = self.cfg["output_tokenizer"]["eos_token"]
-        self._eos_token_id = self.output_tokenizer.special_token_to_id(
+        self._eos_token = self.cfg["input_tokenizer"]["eos_token"]
+        self._eos_token_id = self.tokenizer.special_token_to_id(
             self._eos_token
         )
 
         # continuations are the tokens from the vocab
         # (already sorted by token id)
-        self._continuations = self.output_tokenizer.get_vocab()
+        self._continuations = self.tokenizer.get_vocab()
         self._sampling_strategy = "greedy"
         self._beam_width = 1
         self._temp = 1.0
@@ -280,7 +276,7 @@ class TextGenerator(TextProcessor):
             outputs = beam_search(
                 decode_fn=_decode_fn,
                 initial=initial_beams,
-                pad_token_id=self.output_tokenizer.pad_token_id(),
+                pad_token_id=self.tokenizer.pad_token_id(),
                 max_length=self.max_length,
                 stop_fn=beam_stop_fn,
                 device=self.devices[0],
@@ -343,7 +339,7 @@ class TextGenerator(TextProcessor):
         return search(
             decode_fn=_decode_fn,
             initial_token_ids=initial_token_ids,
-            pad_token_id=self.output_tokenizer.pad_token_id(),
+            pad_token_id=self.tokenizer.pad_token_id(),
             max_length=self.max_length,
             sample_fn=sample_fn,
             logit_fns=logit_fns,
@@ -359,7 +355,7 @@ class TextGenerator(TextProcessor):
     ) -> data.InferenceData:
         assert len(outputs) == 1, "expected single output"
 
-        text = self.output_tokenizer.de_tokenize(
+        text = self.tokenizer.de_tokenize(
             [self._eos_token_id] + outputs[0][:-1], False
         )[len(self._eos_token):]
         if self._full_outputs:

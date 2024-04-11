@@ -1,15 +1,5 @@
 experiment:
-  name: env(MISTRAL_MODEL:mistral-7b-instruct)
-output_tokenizer:
-  tokenize:
-    type: huggingface
-    path: relpath(mistral/tokenizer.json)
-  special:
-    tokens:
-      - <unk>
-    pad: <unk>
-  type: mistral
-  eos_token: </s>
+  name: mistral-7b-instruct
 input_tokenizer:
   tokenize:
     type: huggingface
@@ -18,13 +8,12 @@ input_tokenizer:
     tokens:
       - <unk>
     pad: <unk>
-  type: mistral
   eos_token: </s>
 chat_template:
   user: "[INST] {text} [/INST]"
   assistant: "{text}</s> "
 model:
-  name: env(MISTRAL_MODEL:mistral-7b-instruct)
+  name: mistral-7b-instruct
   type: pretrained_decoder
 seed: 22
 train:
