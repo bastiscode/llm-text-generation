@@ -111,6 +111,8 @@ PRETRAINED_DECODERS = [
     "mistral-7b-instruct",
     "mixtral-8x7b",
     "mixtral-8x7b-instruct",
+    "mixtral-8x22b",
+    "mixtral-8x22b-4bit",
     "phi-2"
 ]
 
@@ -133,9 +135,8 @@ class PretrainedDecoder(Model):
                     torch_dtype=kwargs.pop("torch_dtype", "auto"),
                     **kwargs
                 )  # type: ignore
-            elif name.startswith("mistral"):
-                parts = name.split("-")
-                if len(parts) > 2:
+            elif name.startswith("mistral-7b"):
+                if name.endswith("instruct"):
                     name = "Mistral-7B-Instruct-v0.2"
                 else:
                     name = "Mistral-7B-v0.1"
@@ -144,14 +145,23 @@ class PretrainedDecoder(Model):
                     torch_dtype=kwargs.pop("torch_dtype", "auto"),
                     **kwargs
                 )  # type: ignore
-            elif name.startswith("mixtral"):
-                parts = name.split("-")
-                if len(parts) > 2:
+            elif name.startswith("mixtral-8x7b"):
+                if name.endswith("instruct"):
                     name = "Mixtral-8x7B-Instruct-v0.1"
                 else:
                     name = "Mixtral-8x7B-v0.1"
                 self.model = MixtralForCausalLM.from_pretrained(
                     f"mistralai/{name}",
+                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
+                    **kwargs
+                )  # type: ignore
+            elif name.startswith("mixtral-8x22b"):
+                if name.endswith("4bit"):
+                    name = "Mixtral-8x22B-v0.1-4bit"
+                else:
+                    name = "Mixtral-8x22B-v0.1"
+                self.model = MixtralForCausalLM.from_pretrained(
+                    f"mistral-community/{name}",
                     torch_dtype=kwargs.pop("torch_dtype", "auto"),
                     **kwargs
                 )  # type: ignore

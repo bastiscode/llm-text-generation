@@ -14,6 +14,5 @@ model:
   type: pretrained_decoder
 seed: 22
 train:
-  precision: fp16
   data:
     max_length: 4096

@@ -1,5 +1,5 @@
 experiment:
-  name: mixtral-8x7b
+  name: mixtral-8x22b-4bit
 input_tokenizer:
   tokenize:
     type: huggingface
@@ -10,12 +10,10 @@ input_tokenizer:
     pad: <unk>
   eos_token: </s>
 model:
-  name: mixtral-8x7b
+  name: mixtral-8x22b-4bit
   type: pretrained_decoder
   attn_implementation: env(MIXTRAL_ATTN_IMPLEMENTATION:null)
-  load_in_4bit: env(MIXTRAL_4BIT:true)
 seed: 22
 train:
-  precision: bfp16
   data:
-    max_length: 8192
+    max_length: 65536

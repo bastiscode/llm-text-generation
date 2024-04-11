@@ -1,0 +1,20 @@
+experiment:
+  name: mixtral-8x22b
+input_tokenizer:
+  tokenize:
+    type: huggingface
+    path: relpath(mixtral/tokenizer.json)
+  special:
+    tokens:
+      - <unk>
+    pad: <unk>
+  eos_token: </s>
+model:
+  name: mixtral-8x22b
+  type: pretrained_decoder
+  attn_implementation: env(MIXTRAL_ATTN_IMPLEMENTATION:null)
+  load_in_4bit: env(MIXTRAL_4BIT:true)
+seed: 22
+train:
+  data:
+    max_length: 65536

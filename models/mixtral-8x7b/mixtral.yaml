@@ -1,20 +1,19 @@
 experiment:
-  name: mistral-7b-instruct
+  name: mixtral-8x7b
 input_tokenizer:
   tokenize:
     type: huggingface
-    path: relpath(mistral/tokenizer.json)
+    path: relpath(mixtral/tokenizer.json)
   special:
     tokens:
       - <unk>
     pad: <unk>
   eos_token: </s>
-chat_template:
-  user: "[INST] {text} [/INST]"
-  assistant: "{text}</s> "
 model:
-  name: mistral-7b-instruct
+  name: mixtral-8x7b
   type: pretrained_decoder
+  attn_implementation: env(MIXTRAL_ATTN_IMPLEMENTATION:null)
+  load_in_4bit: env(MIXTRAL_4BIT:true)
 seed: 22
 train:
   data:
