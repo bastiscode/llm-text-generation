@@ -26,6 +26,7 @@ from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithCrossAttentions,
     CausalLMOutputWithPast,
+    MoeCausalLMOutputWithPast
 )
 from transformers.models.phi.modeling_phi import (
     PhiForCausalLM,
@@ -233,7 +234,7 @@ class PretrainedDecoder(Model):
         assert isinstance(
             output,
             (BaseModelOutputWithPast, CausalLMOutputWithPast,
-             CausalLMOutputWithCrossAttentions)
+             CausalLMOutputWithCrossAttentions, MoeCausalLMOutputWithPast)
         ), f"unexpected output type {type(output)}"
         return output.logits, output.past_key_values  # type: ignore
 
