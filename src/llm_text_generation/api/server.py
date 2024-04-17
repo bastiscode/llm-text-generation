@@ -112,10 +112,10 @@ class TextGenerationServer(TextProcessingServer):
                     )
                 )
 
-        @self.websocket.route("/live")
+        @self.websocket.route(f"{self.base_url}/live")
         def _generate_live(ws) -> None:
             try:
-                data = ws.receive(timeout=3)
+                data = ws.receive(timeout=self.timeout)
                 json = J.loads(data)
                 if json is None:
                     ws.send(J.dumps({
