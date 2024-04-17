@@ -169,10 +169,12 @@ class TextGenerator(TextProcessor):
 
         return data.InferenceData(text, info)
 
+    @torch.inference_mode()
     def _inference(
         self,
         inputs: dict[str, Any],
-    ) -> list[Any]:
+        yield_intermediate: bool = False
+    ) -> Iterator[Any]:
         initial_token_ids = [
             list(token_ids[:length])
             for token_ids, length in zip(
@@ -273,22 +275,27 @@ class TextGenerator(TextProcessor):
             def beam_stop_fn(beam: Beam) -> bool:
                 return beam.token_ids[-1] == self._eos_token_id
 
-            outputs = beam_search(
-                decode_fn=_decode_fn,
-                initial=initial_beams,
-                pad_token_id=self.tokenizer.pad_token_id(),
-                max_length=self.max_length,
-                stop_fn=beam_stop_fn,
-                device=self.devices[0],
-                normalize_by_length=True,
-                alpha=1.0,
-                beam_width=self._beam_width,
-                sample_fn=sample_fn,
-                candidate_fn=candidate_fn,
-                logit_fns=logit_fns,
-                kwargs_update_fn=_kwargs_update_fn,
+            yield from (
+                [beam[0].token_ids for beam in beams]
+                for beams in
+                beam_search(
+                    decode_fn=_decode_fn,
+                    initial=initial_beams,
+                    pad_token_id=self.tokenizer.pad_token_id(),
+                    max_length=self.max_length,
+                    stop_fn=beam_stop_fn,
+                    device=self.devices[0],
+                    normalize_by_length=True,
+                    alpha=1.0,
+                    beam_width=self._beam_width,
+                    sample_fn=sample_fn,
+                    candidate_fn=candidate_fn,
+                    logit_fns=logit_fns,
+                    kwargs_update_fn=_kwargs_update_fn,
+                    yield_intermediate=yield_intermediate
+                )
             )
-            return [output[0].token_ids for output in outputs]
+            return
 
         logit_fns = []
         constraints: dict[int, Constraint] = {}
@@ -336,7 +343,7 @@ class TextGenerator(TextProcessor):
         def stop_fn(token_ids: torch.Tensor, _: list[int]) -> torch.Tensor:
             return token_ids == self._eos_token_id
 
-        return search(
+        yield from search(
             decode_fn=_decode_fn,
             initial_token_ids=initial_token_ids,
             pad_token_id=self.tokenizer.pad_token_id(),
@@ -346,6 +353,7 @@ class TextGenerator(TextProcessor):
             stop_fn=stop_fn,
             device=self.devices[0],
             kwargs_update_fn=_kwargs_update_fn,
+            yield_intermediate=yield_intermediate
         )
 
     def _process_results(
@@ -354,13 +362,18 @@ class TextGenerator(TextProcessor):
         outputs: list[Any],
     ) -> data.InferenceData:
         assert len(outputs) == 1, "expected single output"
+        output = outputs[0]
+        item = items[0]
 
         text = self.tokenizer.de_tokenize(
-            [self._eos_token_id] + outputs[0][:-1], False
-        )[len(self._eos_token):]
-        if self._full_outputs:
-            text = items[0].data.text + text
-        return data.InferenceData(text)
+            item.tokenization.token_ids + output
+        )
+        if not self._full_outputs:
+            input_text = self.tokenizer.de_tokenize(
+                item.tokenization.token_ids
+            )
+            text = text[len(input_text):]
+        return data.InferenceData(text, item.data.info)
 
     def _get_constraint(
         self,
@@ -452,6 +465,19 @@ class TextGenerator(TextProcessor):
             output.text
             for output in outputs
         ]
+
+    def generate_live(
+        self,
+        ipt: str | Chat | tuple[str | Chat, Const],
+    ) -> Iterator[str]:
+        batch = next(self._get_loader(
+            iter([self._prepare_input(ipt)]),
+            1,
+        ))
+        inputs = self._prepare_batch(batch)
+        items = batch.items()
+        for outputs in self._inference(inputs, yield_intermediate=True):
+            yield self._process_results(items, outputs).text
 
     def generate_iter(
         self,
