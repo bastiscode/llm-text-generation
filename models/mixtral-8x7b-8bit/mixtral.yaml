@@ -14,6 +14,7 @@ model:
   type: pretrained_decoder
   attn_implementation: env(MIXTRAL_ATTN_IMPLEMENTATION:null)
   load_in_8bit: env(MIXTRAL_8BIT:true)
+  device_map: "auto"
 seed: 22
 train:
   data:
