@@ -117,6 +117,8 @@ class TextGenerator(TextProcessor):
 
     def to(self, device: Device) -> "TextGenerator":
         self.devices = get_devices(device)
+        if self.cfg["model"].get("device_map", None) is not None:
+            return
         assert isinstance(self.model, Model)
         self.model = self.model.distribute(self.devices)
         return self

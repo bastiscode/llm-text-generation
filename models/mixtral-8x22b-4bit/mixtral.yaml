@@ -13,6 +13,7 @@ model:
   name: mixtral-8x22b-4bit
   type: pretrained_decoder
   attn_implementation: env(MIXTRAL_ATTN_IMPLEMENTATION:null)
+  device_map: "auto"
 seed: 22
 train:
   data:
