@@ -1,6 +1,7 @@
 PERCENT [1-9]?[0-9] '%'
 BOOL (true|false)
 DIGITS \d+
+SCORE 400|[1-3][0-9][0-9]|[1-9][0-9]|[0-9]
 %%
 \{
     "patient_id": "{DIGITS}",
@@ -26,7 +27,7 @@ DIGITS \d+
         "E": {BOOL},
         "HRP": {BOOL},
         "specific_risk_count": [1-5],
-        "calcification_score": [1-9]?[0-9]?[0-9],
+        "calcification_score": {SCORE},
         "FFR": [1-5],
         "CTP": [0-5]
     \}

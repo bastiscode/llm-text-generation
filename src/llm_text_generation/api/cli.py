@@ -176,7 +176,7 @@ def main():
     parser.add_argument(
         "--file-format",
         choices=["jsonl", "lines", "text"],
-        default="lines",
+        default="text",
         help="Whether to treat input/output files as jsonl, line-separated, "
         "or single piece of text"
     )

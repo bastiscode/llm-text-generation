@@ -542,7 +542,7 @@ class TextGenerator(TextProcessor):
                 for line in open(input_file, "r")
             )
         else:
-            inputs = iter([open(input_file, "r").read()])
+            inputs = iter([self._prepare_input(open(input_file, "r").read())])
 
         loader = self._get_loader(
             inputs,
