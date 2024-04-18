@@ -1,0 +1,23 @@
+experiment:
+  name: mixtral-8x7b-instruct
+input_tokenizer:
+  tokenize:
+    type: huggingface
+    path: relpath(mixtral/tokenizer.json)
+  special:
+    tokens:
+      - <unk>
+    pad: <unk>
+  eos_token: </s>
+chat_template:
+  user: "[INST] {text} [/INST]"
+  assistant: "{text}</s> "
+model:
+  name: mixtral-8x7b-instruct
+  type: pretrained_decoder
+  attn_implementation: env(MIXTRAL_ATTN_IMPLEMENTATION:null)
+  load_in_4bit: env(MIXTRAL_4BIT:true)
+seed: 22
+train:
+  data:
+    max_length: 32768
