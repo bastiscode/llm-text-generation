@@ -1,0 +1,20 @@
+experiment:
+  name: env(LLAMA3_MODEL:llama-3-8b)
+input_tokenizer:
+  tokenize:
+    type: huggingface
+    path: relpath(llama-3/tokenizer.json)
+  special:
+    tokens:
+      - <|begin_of_text|>
+    pad: <|end_of_text|>
+  type: llama-2
+  eos_token: <|end_of_text|>
+model:
+  name: env(LLAMA3_MODEL:llama-3-8b)
+  type: pretrained_decoder
+  device_map: auto
+seed: 22
+train:
+  data:
+    max_length: 8192
