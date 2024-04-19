@@ -108,6 +108,10 @@ PRETRAINED_DECODERS = [
     "llama-2-7b-chat",
     "llama-2-30b-chat",
     "llama-2-70b-chat",
+    "llama-3-8b",
+    "llama-3-8b-instruct",
+    "llama-3-70b",
+    "llama-3-70b-instruct",
     "mistral-7b",
     "mistral-7b-instruct",
     "mixtral-8x7b",
@@ -130,7 +134,22 @@ class PretrainedDecoder(Model):
             self.model = name
         else:
             assert name in PRETRAINED_DECODERS, f"unknown model {name}"
-            if name.startswith("llama"):
+            if name.startswith("llama-2"):
+                name = name.lower()
+                if name.endswith("8b"):
+                    name = "Meta-Llama-3-8B"
+                elif name.endswith("8b-instruct"):
+                    name = "Meta-Llama-3-8B-Instruct"
+                elif name.endswith("70b"):
+                    name = "Meta-Llama-3-70B"
+                else:
+                    name = "Meta-Llama-3-70B-Instruct"
+                self.model = LlamaForCausalLM.from_pretrained(
+                    f"meta-llama/{name}",
+                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
+                    **kwargs
+                )  # type: ignore
+            elif name.startswith("llama-3"):
                 self.model = LlamaForCausalLM.from_pretrained(
                     f"meta-llama/{name.capitalize()}-hf",
                     torch_dtype=kwargs.pop("torch_dtype", "auto"),
