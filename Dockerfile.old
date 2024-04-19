@@ -8,6 +8,7 @@ RUN pip install .
 
 ENV TEXT_GENERATION_DOWNLOAD_DIR=/llm-text-generation/download
 ENV TEXT_GENERATION_CACHE_DIR=/llm-text-generation/cache
+ENV HF_HOME=/llm-text-generation/huggingface
 ENV PYTHONWARNINGS="ignore"
 
 ENTRYPOINT ["/usr/local/bin/llm-gen"]

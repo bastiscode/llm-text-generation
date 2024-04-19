@@ -17,7 +17,7 @@ pip install ad-freiburg-llm-text-generation
 ```bash
 git clone git@github.com:ad-freiburg/llm-text-generation.git
 cd llm-text-generation
-pip install .
+pip install -e .
 
 ```
 
@@ -45,7 +45,7 @@ echo "The capital of Germany is" | llm-gen
 cat "path/to/input/file.txt" | llm-gen > output.txt
 
 # complete a string using
-llm-gen -c "The capital of Germany is"
+llm-gen -p "The capital of Germany is"
 
 # complete a text file line by line and print the completed lines
 llm-gen -f path/to/input/file.txt
@@ -60,6 +60,7 @@ llm-gen -i
 ### /models [GET] --> output: available models as json 
 ### /info [GET] --> output: info about backend as json
 ### /generate [POST] input: some input text --> output: continuation of the input text
+### /live [WS] websocket endpoint for live text generation (only single unbatched requests)
 llm-gen --server <config_file>
 
 ### OPTIONS
@@ -70,7 +71,6 @@ llm-gen --server <config_file>
 -b <batch_size> # specify a different batch size
 -batch-max-tokens <batch_max_tokens> # limit batch by a number of tokens and not by number of samples
 -u # do not sort the inputs before completeing
---precision # set inference precision (one of fp32, fp16 and bfp16)
 -e <experiment_dir> # specify the path to an experiment directory to load the model from 
                     # (equivalent to TextGenerator.from_experiment(experiment_dir) in Python API)
 --force-download # force download of the text generation model even if it was already downloaded
@@ -166,7 +166,7 @@ you do not need to download the models every time.
 
 ```bash
 # complete text
-docker run llm-text-generation -c "completethisplease"
+docker run llm-text-generation -p "completethisplease"
 
 # complete file
 docker run llm-text-generation -f path/to/file.txt

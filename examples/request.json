@@ -1,0 +1,28 @@
+{
+    "model": "gpt2",
+    "sampling_strategy": "top_p",
+    "top_p": 0.9,
+    "temperature": 0.7,
+    "top_k": 40,
+    "beam_width": 3,
+    "max_length": 64,
+    "inputs": [
+        {
+            "text": "Write a poem about spring"
+        },
+        {
+            "chat": [
+                {"role": "user", "text": "Write a poem about spring"},
+                {"role": "assistant", "text": "How long should it be?"},
+                {"role": "user", "text": "Make it 4 lines only"}
+            ]
+        },
+        {
+            "text": "Is Berlin larger than Paris? ",
+            "constraint": {
+                "type": "regex",
+                "regex": "yes|no"
+            }
+        }
+    ]
+}
