@@ -126,6 +126,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# PyCharm
+/.idea/
+
 # Custom
 .downloads
 /third_party
