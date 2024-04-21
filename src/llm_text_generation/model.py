@@ -464,7 +464,7 @@ def brace_expand_keys(in_dict:Dict[str, Any]):
 
 
 def debug_print(*args, **kwargs):
-    debug_flag = os.environ.get("LLM_TEXT_GEN_DEBUG", "")
+    debug_flag = os.environ.get("TEXT_UTILS_DEBUG", "")
     if debug_flag == "" or debug_flag == "0" or debug_flag.lower() == "false":
         return
     print(*args, **kwargs, file=sys.stderr)
