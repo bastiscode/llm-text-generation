@@ -1,19 +1,16 @@
 import copy
-import tempfile
 import functools
+import os
+import sys
+import tempfile
 from typing import Dict, Any, Optional, Tuple, List
+from copy import deepcopy
 
 import torch
+from auto_gptq import AutoGPTQForCausalLM, BaseQuantizeConfig
 from torch import nn
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
-
-from auto_gptq import AutoGPTQForCausalLM, BaseQuantizeConfig
-
-from text_utils.api.trainer import ShardingPolicy
-from text_utils.api import utils
 from torch.utils.hooks import RemovableHandle
-
-
 from transformers import (
     AutoModelForCausalLM,
     PreTrainedModel,
@@ -28,15 +25,20 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithPast,
     MoeCausalLMOutputWithPast
 )
+from transformers.models.gpt2.modeling_gpt2 import GPT2Block
+from transformers.models.llama.modeling_llama import LlamaDecoderLayer
+from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
+from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer
 from transformers.models.phi.modeling_phi import (
     PhiForCausalLM,
     PhiDecoderLayer
 )
-from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
-from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer
-from transformers.models.llama.modeling_llama import LlamaDecoderLayer
-from transformers.models.gpt2.modeling_gpt2 import GPT2Block
 from transformers.utils import logging as hf_logging
+from braceexpand import braceexpand
+
+from text_utils.api import utils
+from text_utils.api.trainer import ShardingPolicy
+
 hf_logging.disable_progress_bar()
 
 
@@ -129,6 +131,9 @@ class PretrainedDecoder(Model):
         **kwargs: Any
     ):
         super().__init__()
+        if kwargs.get("device_map") is not None:
+            kwargs["device_map"] = brace_expand_keys(kwargs["device_map"])
+
         if isinstance(name, PreTrainedModel):
             assert isinstance(name, PreTrainedModel)
             self.model = name
@@ -432,3 +437,35 @@ def model_from_config(
         return PretrainedDecoder(quant.model)
     else:
         raise ValueError(f"unknown model type {model_type}")
+
+
+def brace_expand_keys(in_dict:Dict[str, Any]):
+    """
+    Expands keys of the input dict using bash braceexpand.
+
+    Note that this is not recursive, so nested dicts will not be expanded.
+    To avoid reference issues, all values are deepcopied.
+
+    Example:
+    >>> brace_expand_keys({"layer.{1..3}": 0, "head": 1})
+    {'layer.1': 0, 'layer.2': 0, 'layer.3': 0, 'head': 1}
+    """
+    if not isinstance(in_dict, dict):
+        return in_dict
+    out_dict = {}
+    for k, v in in_dict.items():
+        if "{" not in k:
+            out_dict[k] = deepcopy(v)
+            continue
+        new_keys = braceexpand(k)
+        for new_key in new_keys:
+            out_dict[new_key] = deepcopy(v)
+    return out_dict
+
+
+def debug_print(*args, **kwargs):
+    debug_flag = os.environ.get("LLM_TEXT_GEN_DEBUG", "")
+    if debug_flag == "" or debug_flag == "0" or debug_flag.lower() == "false":
+        return
+    print(*args, **kwargs, file=sys.stderr)
+

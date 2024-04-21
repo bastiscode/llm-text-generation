@@ -26,7 +26,8 @@ dependencies = [
     "bitsandbytes>=0.42.0",
     "auto-gptq>=0.6.0",
     "tqdm>=4.60.0",
-    "flask-sock>=0.7.0"
+    "flask-sock>=0.7.0",
+    "braceexpand>=0.1.7"
 ]
 
 [project.scripts]
