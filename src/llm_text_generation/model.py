@@ -1,5 +1,6 @@
 import copy
 import functools
+import time
 import os
 import sys
 import tempfile
@@ -79,13 +80,11 @@ class Model(nn.Module):
     def get_sharding_policy(self) -> ShardingPolicy | None:
         return None
 
-    def quantize(
+    def compile(
         self,
-        scheme: str,
-        output_dir: str,
         **kwargs: Any
     ) -> None:
-        raise NotImplementedError("quantization not supported")
+        pass
 
     def distribute(
         self,
@@ -237,6 +236,15 @@ class PretrainedDecoder(Model):
         output = self.model(input_ids=token_ids)  # type: ignore
         return output.logits, {}
 
+    def compile(
+        self,
+        **kwargs: Any
+    ):
+        self.model = torch.compile(
+            self.model,
+            **kwargs
+        )  # type: ignore
+
     def decode(
         self,
         token_ids: torch.Tensor,
@@ -250,11 +258,15 @@ class PretrainedDecoder(Model):
             token_ids = token_ids[torch.arange(
                 b, device=token_ids.device
             ), lengths - 1, None]
+        start = time.perf_counter()
         output = self.model(  # type: ignore
             input_ids=token_ids,
             past_key_values=kv_cache,
             use_cache=use_cache
         )
+        end = time.perf_counter()
+        # time in ms
+        debug_print(f"decode time: {(end - start) * 1000:.2f} ms ")
         assert isinstance(
             output,
             (BaseModelOutputWithPast, CausalLMOutputWithPast,
@@ -439,7 +451,7 @@ def model_from_config(
         raise ValueError(f"unknown model type {model_type}")
 
 
-def brace_expand_keys(in_dict:Dict[str, Any]):
+def brace_expand_keys(in_dict: Dict[str, Any]):
     """
     Expands keys of the input dict using bash braceexpand.
 
@@ -468,4 +480,3 @@ def debug_print(*args, **kwargs):
     if debug_flag == "" or debug_flag == "0" or debug_flag.lower() == "false":
         return
     print(*args, **kwargs, file=sys.stderr)
-

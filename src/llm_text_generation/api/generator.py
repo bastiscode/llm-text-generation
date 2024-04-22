@@ -115,10 +115,13 @@ class TextGenerator(TextProcessor):
         self._max_length = None
         self._constraint = None
 
+        compile = self.cfg.get("compile", {"disable": True})
+        self.model.compile(**compile)
+
     def to(self, device: Device) -> "TextGenerator":
         self.devices = get_devices(device)
         if self.cfg["model"].get("device_map", None) is not None:
-            return
+            return self
         assert isinstance(self.model, Model)
         self.model = self.model.distribute(self.devices)
         return self
@@ -158,16 +161,25 @@ class TextGenerator(TextProcessor):
             ipt = [{"role": "user", "text": ipt}]
 
         template = self.cfg.get("chat_template", {})
-        text = ""
+        # initialize prompt
+        text = template.get("start", "")
+
+        # add messages
         for message in ipt:
             role = message["role"]
             if role not in template:
                 text += message["text"]
             else:
-                text += template[role].replace(
-                    "{text}",
-                    message["text"]
+                message = template[role].replace(
+                    "{text}", message["text"]
                 )
+                message = template[role].replace(
+                    "{role}", role
+                )
+                text += message
+
+        # add end
+        text += template.get("end", "")
 
         return data.InferenceData(text, info)
 

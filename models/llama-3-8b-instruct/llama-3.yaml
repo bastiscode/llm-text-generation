@@ -1,0 +1,26 @@
+experiment:
+  name: env(LLAMA3_MODEL:llama-3-8b)
+input_tokenizer:
+  tokenize:
+    type: huggingface
+    path: relpath(llama-3/tokenizer.json)
+  special:
+    tokens:
+      - <|begin_of_text|>
+    pad: <|end_of_text|>
+  type: llama-2
+  eos_token: <|eot_id|>
+model:
+  name: env(LLAMA3_MODEL:llama-3-8b)
+  type: pretrained_decoder
+  device_map: auto
+chat_template:
+  start: "<|begin_of_text|>"
+  system: "<|start_header_id|>{role}<|end_header_id|>\n\n{text}<|eot_id|>"
+  user: "<|start_header_id|>{role}<|end_header_id|>\n\n{text}<|eot_id|>"
+  assistant: "<|start_header_id|>{role}<|end_header_id|>\n\n{text}<|eot_id|>"
+  end: "<|start_header_id|>assistant<|end_header_id|>\n\n"
+seed: 22
+train:
+  data:
+    max_length: 8192

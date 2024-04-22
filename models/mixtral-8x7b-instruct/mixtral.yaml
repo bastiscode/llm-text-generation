@@ -11,7 +11,7 @@ input_tokenizer:
   eos_token: </s>
 chat_template:
   user: "[INST] {text} [/INST]"
-  assistant: "{text}</s> "
+  assistant: "{text}</s>"
 model:
   name: mixtral-8x7b-instruct
   type: pretrained_decoder
