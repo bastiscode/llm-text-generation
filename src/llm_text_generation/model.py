@@ -250,7 +250,7 @@ class PretrainedDecoder(Model):
             max_bs = cfg.get("max_batch_size", 16)
             max_len = cfg.get("max_length", 512)
             name = cfg.get("name", "input_ids")
-            model = trt.compile(
+            self.model = trt.compile(
                 self.model,
                 inputs=[trt.Input(
                     min_shape=(1, 1),
@@ -261,9 +261,9 @@ class PretrainedDecoder(Model):
                 )],
                 enabled_precisions={next(self.model.parameters()).dtype},
                 **cfg
-            )
+            )  # type: ignore
             if path is not None:
-                torch.jit.save(model, path)
+                torch.jit.save(self.model, path)
         else:
             raise ValueError(f"unknown compilation type {typ}")
 
