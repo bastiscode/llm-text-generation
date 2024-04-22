@@ -1,5 +1,5 @@
 experiment:
-  name: env(LLAMA3_MODEL:llama-3-8b)
+  name: env(LLAMA3_MODEL:llama-3-8b-instruct)
 input_tokenizer:
   tokenize:
     type: huggingface
@@ -11,7 +11,7 @@ input_tokenizer:
   type: llama-2
   eos_token: <|eot_id|>
 model:
-  name: env(LLAMA3_MODEL:llama-3-8b)
+  name: env(LLAMA3_MODEL:llama-3-8b-instruct)
   type: pretrained_decoder
   device_map: auto
 chat_template:
