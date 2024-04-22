@@ -170,13 +170,9 @@ class TextGenerator(TextProcessor):
             if role not in template:
                 text += message["text"]
             else:
-                message = template[role].replace(
-                    "{text}", message["text"]
-                )
-                message = template[role].replace(
-                    "{role}", role
-                )
-                text += message
+                msg = template[role].replace("{text}", message["text"])
+                msg = msg.replace("{role}", role)
+                text += msg
 
         # add end
         text += template.get("end", "")
