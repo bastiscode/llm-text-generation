@@ -12,6 +12,8 @@ input_tokenizer:
 model:
   name: env(GPT2_MODEL:gpt2-xl)
   type: pretrained_decoder
+compile:
+  type: tensorrt
 seed: 22
 train:
   data:

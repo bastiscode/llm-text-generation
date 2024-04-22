@@ -3,12 +3,10 @@ import functools
 import time
 import os
 import sys
-import tempfile
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Any, Optional
 from copy import deepcopy
 
 import torch
-from auto_gptq import AutoGPTQForCausalLM, BaseQuantizeConfig
 from torch import nn
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from torch.utils.hooks import RemovableHandle
@@ -74,7 +72,7 @@ class Model(nn.Module):
         self,
         token_ids: torch.Tensor,
         **kwargs: Any
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         raise NotImplementedError
 
     def get_sharding_policy(self) -> ShardingPolicy | None:
@@ -94,10 +92,6 @@ class Model(nn.Module):
         return self.to(devices[0])
 
 
-QUANTIZATION_SCHEMES = [
-    "w8a16",
-    "w4a16"
-]
 PRETRAINED_DECODERS = [
     "gpt2",
     "gpt2-medium",
@@ -232,26 +226,54 @@ class PretrainedDecoder(Model):
         self,
         token_ids: torch.Tensor,
         **_: Any
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         output = self.model(input_ids=token_ids)  # type: ignore
         return output.logits, {}
 
     def compile(
         self,
-        **kwargs: Any
+        **cfg: Any
     ):
-        self.model = torch.compile(
-            self.model,
-            **kwargs
-        )  # type: ignore
+        cfg = copy.deepcopy(cfg)
+        typ = cfg.pop("type", "torch")
+        if typ == "torch":
+            self.model = torch.compile(
+                self.model,
+                **cfg
+            )  # type: ignore
+        elif typ == "tensorrt":
+            import torch_tensorrt as trt
+            path = cfg.pop("path", None)
+            if path is not None:
+                self.model = torch.jit.load(path)
+                return
+            max_bs = cfg.get("max_batch_size", 16)
+            max_len = cfg.get("max_length", 512)
+            name = cfg.get("name", "input_ids")
+            model = trt.compile(
+                self.model,
+                inputs=[trt.Input(
+                    min_shape=(1, 1),
+                    opt_shape=(max_bs // 2, max_len // 2),
+                    max_shape=(max_bs, max_len),
+                    dtype=torch.long,
+                    name=name
+                )],
+                enabled_precisions={next(self.model.parameters()).dtype},
+                **cfg
+            )
+            if path is not None:
+                torch.jit.save(model, path)
+        else:
+            raise ValueError(f"unknown compilation type {typ}")
 
     def decode(
         self,
         token_ids: torch.Tensor,
         lengths: torch.Tensor,
-        kv_cache: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+        kv_cache: Optional[tuple[tuple[torch.Tensor]]] = None,
         use_cache: bool = True
-    ) -> Tuple[torch.Tensor, Tuple[Tuple[torch.Tensor]]]:
+    ) -> tuple[torch.Tensor, tuple[tuple[torch.Tensor]]]:
         if use_cache and kv_cache is not None:
             b, s = token_ids.shape
             assert token_ids.ndim == 2 and s > 0
@@ -380,54 +402,9 @@ class PretrainedDecoder(Model):
             )
         return self
 
-    def quantize(
-        self,
-        scheme: str,
-        output_dir: str,
-        examples: Optional[
-            List[Dict[str, List[int] | torch.LongTensor]]
-        ] = None,
-        batch_size: int = 16,
-        use_triton: bool = False,
-        cache_on_gpu: bool = True,
-        **kwargs: Any
-    ) -> None:
-        assert scheme in QUANTIZATION_SCHEMES, \
-            f"unknown quantization scheme {scheme}, must be one of " \
-            f"{QUANTIZATION_SCHEMES}"
-        assert examples is not None
-
-        if scheme == "w8a16":
-            bits = 8
-        elif scheme == "w4a16":
-            bits = 4
-        else:
-            raise ValueError(f"unknown quantization scheme {scheme}")
-
-        config = BaseQuantizeConfig(
-            bits=bits,
-            group_size=128,
-            desc_act=False
-        )
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            self.model: PreTrainedModel
-            self.model.save_pretrained(tmpdir)
-            quant_model = AutoGPTQForCausalLM.from_pretrained(
-                tmpdir,
-                config,
-            )
-        quant_model.quantize(
-            examples,
-            batch_size,
-            use_triton=use_triton,
-            cache_examples_on_gpu=cache_on_gpu,
-        )
-        quant_model.save_quantized(output_dir)
-
 
 def model_from_config(
-    cfg: Dict[str, Any],
+    cfg: dict[str, Any],
 ) -> Model:
     cfg = copy.deepcopy(cfg)
     model_type = cfg.pop("type")
@@ -440,18 +417,11 @@ def model_from_config(
             torch_dtype="auto"
         )
         return PretrainedDecoder(model)
-    elif model_type == "quantized_decoder":
-        quant = AutoGPTQForCausalLM.from_quantized(
-            cfg["path"],
-            torch_dtype="auto"
-        )
-        assert isinstance(quant.model, PreTrainedModel)
-        return PretrainedDecoder(quant.model)
     else:
         raise ValueError(f"unknown model type {model_type}")
 
 
-def brace_expand_keys(in_dict: Dict[str, Any]):
+def brace_expand_keys(in_dict: dict[str, Any]):
     """
     Expands keys of the input dict using bash braceexpand.
 
