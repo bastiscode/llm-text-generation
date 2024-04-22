@@ -161,6 +161,9 @@ class TextGenerator(TextProcessor):
             ipt = [{"role": "user", "text": ipt}]
 
         template = self.cfg.get("chat_template", {})
+
+        assert len(ipt) > 0, "expected non-empty chat"
+        assert ipt[-1]["role"] == "user", "expected user to be last"
         # initialize prompt
         text = template.get("start", "")
 
@@ -171,7 +174,6 @@ class TextGenerator(TextProcessor):
                 text += message["text"]
             else:
                 msg = template[role].replace("{text}", message["text"])
-                msg = msg.replace("{role}", role)
                 text += msg
 
         # add end
