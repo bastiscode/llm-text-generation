@@ -1,8 +1,10 @@
 tokenize:
   type: huggingface
-  path: relpath(phi-2/tokenizer.json)
+  path: relpath(phi-3/tokenizer.json)
 special:
   tokens:
     - <|endoftext|>
+    - <unk>
   pad: <|endoftext|>
+  unk: <unk>
 eos_token: <|endoftext|>

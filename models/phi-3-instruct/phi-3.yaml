@@ -1,0 +1,25 @@
+experiment:
+  name: phi-3-env(PHI3_SIZE:mini)-instruct
+input_tokenizer:
+  eos_token: <|end|>
+  special:
+    pad: <|endoftext|>
+    unk: <unk>
+    tokens:
+    - <unk>
+    - <|endoftext|>
+  tokenize:
+    path: relpath(phi-3/tokenizer.json)
+    type: huggingface
+model:
+  name: phi-3-env(PHI3_SIZE:mini)-instruct
+  type: pretrained_decoder
+chat_template:
+  system: "<|system|>\n{text}<|end|>"
+  user: "<|user|>\n{text}<|end|>"
+  assistant: "<|assistant|>\n{text}<|end|>"
+  end: "<|assistant|>\n"
+seed: 22
+train:
+  data:
+    max_length: 131072

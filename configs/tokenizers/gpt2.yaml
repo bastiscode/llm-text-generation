@@ -5,5 +5,4 @@ special:
   tokens:
     - <|endoftext|>
   pad: <|endoftext|>
-type: gpt2
 eos_token: <|endoftext|>

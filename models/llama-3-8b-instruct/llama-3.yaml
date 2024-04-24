@@ -8,7 +8,6 @@ input_tokenizer:
     tokens:
       - <|begin_of_text|>
     pad: <|end_of_text|>
-  type: llama-2
   eos_token: <|eot_id|>
 model:
   name: env(LLAMA3_MODEL:llama-3-8b-instruct)

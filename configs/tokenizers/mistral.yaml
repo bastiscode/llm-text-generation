@@ -5,5 +5,4 @@ special:
   tokens:
     - <unk>
   pad: <unk>
-type: mistral
 eos_token: </s>
