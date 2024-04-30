@@ -1,0 +1,3 @@
+type: file_pair
+input_path: data/wikidata-qald10/train_input.txt
+target_path: data/wikidata-qald10/train_sparql.txt
