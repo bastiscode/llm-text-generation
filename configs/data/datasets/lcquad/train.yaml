@@ -1,0 +1,3 @@
+type: file_pair
+input_path: data/wikidata-lcquad2/train_input.txt
+target_path: data/wikidata-lcquad2/train_sparql.txt

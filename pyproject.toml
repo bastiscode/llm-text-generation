@@ -1,7 +1,7 @@
 [project]
 name = "llm_text_generation"
 version = "0.1.0"
-description = "Finetune and run large language models."
+description = "Finetune and run large language models for SPARQL QA."
 authors = [
     { name = "Sebastian Walter", email = "swalter@cs.uni-freiburg.de" }
 ]
@@ -9,7 +9,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 
-keywords = ["nlp", "text", "llm"]
+keywords = ["nlp", "text", "llm", "SPARQL", "QA"]
 
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -30,10 +30,10 @@ dependencies = [
 ]
 
 [project.scripts]
-"llm-gen" = "llm_text_generation.api.cli:main"
+"sparql-gen" = "llm_text_generation.api.cli:main"
 
 [project.urls]
-Github = "https://github.com/bastiscode/llm-text-generation"
+Github = "https://github.com/bastiscode/llm-text-generation#sparql"
 
 [tool.distutils.bdist_wheel]
 universal = true
