@@ -129,7 +129,6 @@ class TextGenerator(TextProcessor):
         return {
             "tokenizer_config": self.cfg["input_tokenizer"],
             "window_config": {"type": "full"},
-            "clean_text": False
         }
 
     def _prepare_batch(self, batch: data.InferenceBatch) -> dict[str, Any]:
