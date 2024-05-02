@@ -81,8 +81,8 @@ class Model(nn.Module):
     def compile(
         self,
         **kwargs: Any
-    ) -> None:
-        pass
+    ) -> "Model":
+        return self
 
     def distribute(
         self,
@@ -233,7 +233,7 @@ class PretrainedDecoder(Model):
     def compile(
         self,
         **cfg: Any
-    ):
+    ) -> "PretrainedDecoder":
         cfg = copy.deepcopy(cfg)
         typ = cfg.pop("type", None)
         if typ == "torch":
@@ -246,7 +246,7 @@ class PretrainedDecoder(Model):
             path = cfg.pop("path", None)
             if path is not None:
                 self.model = torch.jit.load(path)
-                return
+                return self
             max_bs = cfg.get("max_batch_size", 16)
             max_len = cfg.get("max_length", 512)
             name = cfg.get("name", "input_ids")
@@ -264,6 +264,8 @@ class PretrainedDecoder(Model):
             )  # type: ignore
             if path is not None:
                 torch.jit.save(self.model, path)
+
+        return self
 
     def decode(
         self,

@@ -115,7 +115,7 @@ class TextGenerator(TextProcessor):
         self._max_length = None
         self._constraint = None
 
-        self.model.compile(**self.cfg.get("compile", {}))
+        self.model = self.model.compile(**self.cfg.get("compile", {}))
 
     def to(self, device: Device) -> "TextGenerator":
         self.devices = get_devices(device)
