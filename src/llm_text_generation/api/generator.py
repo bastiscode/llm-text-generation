@@ -530,7 +530,7 @@ class TextGenerator(TextProcessor):
                 show_progress
             )
 
-        return (output.text for output in outputs)
+        yield from (output.text for output in outputs)
 
     def generate_file(
         self,
