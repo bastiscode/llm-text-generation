@@ -235,7 +235,7 @@ class PretrainedDecoder(Model):
         **cfg: Any
     ):
         cfg = copy.deepcopy(cfg)
-        typ = cfg.pop("type", "torch")
+        typ = cfg.pop("type", None)
         if typ == "torch":
             self.model = torch.compile(
                 self.model,
@@ -264,8 +264,6 @@ class PretrainedDecoder(Model):
             )  # type: ignore
             if path is not None:
                 torch.jit.save(self.model, path)
-        else:
-            raise ValueError(f"unknown compilation type {typ}")
 
     def decode(
         self,
