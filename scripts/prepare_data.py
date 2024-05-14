@@ -409,6 +409,7 @@ def prepare(args: argparse.Namespace):
             f"{split}_raw.txt"
         )
         incomplete = 0
+        total = 0
         with open(input, "w") as inf, \
                 open(target, "w") as tf, \
                 open(raw, "w") as rf:
@@ -451,6 +452,7 @@ def prepare(args: argparse.Namespace):
                         args.skip_incomplete
                     )
                     incomplete += sum(is_inc for _, is_inc in sparqls)
+                    total += len(sparqls)
                     if len(sparqls) == 0:
                         continue
 
@@ -493,8 +495,9 @@ def prepare(args: argparse.Namespace):
                     ) + "\n")
 
         print(
-            f"Processed {len(samples):,} {split} samples with "
-            f"{incomplete:,} ({incomplete / len(samples):.2%}) "
+            f"Processed {len(samples):,} {split} samples "
+            f"generating {total:,} SPARQL queries with "
+            f"{incomplete:,} ({incomplete / total:.2%}) "
             "being incomplete"
         )
 
