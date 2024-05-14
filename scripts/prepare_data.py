@@ -253,78 +253,113 @@ def prepare_sparql(
     property_pattern: re.Pattern,
     prefix_patterns: dict[str, re.Pattern],
     prefixes: dict[str, str],
-    version: str
-) -> tuple[str, bool]:
-    incomplete = False
-    if entity_index is not None:
-        def _replace_ent(m: re.Match) -> str:
-            nonlocal incomplete
-            obj = m.group(0)
-            ents = entity_index.get(obj)
-            if ents is not None:
-                return format_ent(ents[0], version, kg)
-            else:
-                incomplete = True
-            return obj
+    version: str,
+    replacement: str = "only_first",
+    skip_incomplete: bool = False
+) -> list[tuple[str, bool]]:
+    assert replacement in [
+        "only_first",
+        "in_order"
+    ]
+    org_sparql = sparql
+    sparqls = []
 
-        sparql = entity_pattern.sub(
-            _replace_ent,
-            sparql
-        )
+    entities = collections.Counter()
+    properties = collections.Counter()
 
-    if property_index is not None:
-        def _replace_prop(m: re.Match) -> str:
-            nonlocal incomplete
-            obj = m.group(0)
-            props = property_index.get(obj)
-            if props is not None:
-                return format_prop(props[0], version, kg)
-            else:
-                incomplete = True
-            return obj
+    while True:
+        sparql = org_sparql
+        incomplete = False
 
-        sparql = property_pattern.sub(
-            _replace_prop,
-            sparql
-        )
+        if entity_index is not None:
+            def _replace_ent(m: re.Match) -> str:
+                nonlocal incomplete
+                nonlocal entities
+                obj = m.group(0)
+                ents = entity_index.get(obj)
+                idx = entities[obj]
+                if ents is not None and idx < len(ents):
+                    return format_ent(ents[idx], version, kg)
+                else:
+                    incomplete = True
 
-    exist = set(PREFIX_PATTERN.findall(sparql))
-    seen = set()
-    for short, pattern in prefix_patterns.items():
-        def _replace_prefix(match: re.Match) -> str:
-            nonlocal seen
-            seen.add(short)
-            return short + (match.group(1) or match.group(2))
+                if replacement == "in_order":
+                    entities[obj] += 1
 
-        sparql = pattern.sub(_replace_prefix, sparql)
+                return obj
 
-    diff = seen.difference(exist)
-    if len(diff) > 0:
-        sparql = " ".join(
-            f"PREFIX {short} <{prefixes[short]}>"
-            for short in diff
-        ) + " " + sparql
+            sparql = entity_pattern.sub(
+                _replace_ent,
+                sparql
+            )
 
-    if version == "v1":
-        # replace variables ?x or $x with <bov>x<eov>
-        sparql = re.sub(
-            r"\?(\w+)|\$(\w+)",
-            lambda m: f"<bov>{m.group(1) or m.group(2)}<eov>",
-            sparql
-        )
-        # replace brackets {, and } with <bob> and <eob>
-        sparql = re.sub(
-            r"{",
-            "<bob>",
-            sparql
-        )
-        sparql = re.sub(
-            r"}",
-            "<eob>",
-            sparql
-        )
+        if property_index is not None:
+            def _replace_prop(m: re.Match) -> str:
+                nonlocal incomplete
+                nonlocal properties
+                obj = m.group(0)
+                props = property_index.get(obj)
+                idx = properties[obj]
+                if props is not None and idx < len(props):
+                    return format_prop(props[idx], version, kg)
+                else:
+                    incomplete = True
 
-    return sparql, incomplete
+                if replacement == "in_order":
+                    properties[obj] += 1
+
+                return obj
+
+            sparql = property_pattern.sub(
+                _replace_prop,
+                sparql
+            )
+
+        exist = set(PREFIX_PATTERN.findall(sparql))
+        seen = set()
+        for short, pattern in prefix_patterns.items():
+            def _replace_prefix(match: re.Match) -> str:
+                nonlocal seen
+                seen.add(short)
+                return short + (match.group(1) or match.group(2))
+
+            sparql = pattern.sub(_replace_prefix, sparql)
+
+        diff = seen.difference(exist)
+        if len(diff) > 0:
+            sparql = " ".join(
+                f"PREFIX {short} <{prefixes[short]}>"
+                for short in diff
+            ) + " " + sparql
+
+        if version == "v1":
+            # replace variables ?x or $x with <bov>x<eov>
+            sparql = re.sub(
+                r"\?(\w+)|\$(\w+)",
+                lambda m: f"<bov>{m.group(1) or m.group(2)}<eov>",
+                sparql
+            )
+            # replace brackets {, and } with <bob> and <eob>
+            sparql = re.sub(
+                r"{",
+                "<bob>",
+                sparql
+            )
+            sparql = re.sub(
+                r"}",
+                "<eob>",
+                sparql
+            )
+
+        if skip_incomplete and incomplete:
+            break
+
+        sparqls.append((sparql, incomplete))
+
+        if incomplete or replacement == "only_first":
+            break
+
+    return sparqls
 
 
 def prepare(args: argparse.Namespace):
@@ -402,7 +437,7 @@ def prepare(args: argparse.Namespace):
                 )
 
                 if has_sparql:
-                    sparql, is_inc = prepare_sparql(
+                    sparqls = prepare_sparql(
                         sample.sparql,
                         kg,
                         ent_index,
@@ -411,14 +446,17 @@ def prepare(args: argparse.Namespace):
                         prop_pattern,
                         prefix_patterns,
                         prefixes,
-                        args.version
+                        args.version,
+                        "in_order" if split == "train" else "only_first",
+                        args.skip_incomplete
                     )
-                    incomplete += is_inc
-                    if args.skip_incomplete and is_inc:
+                    incomplete += sum(is_inc for _, is_inc in sparqls)
+                    if len(sparqls) == 0:
                         continue
+
                     # same as above, but without replacing
                     # with natural language entities
-                    raw_sparql, _ = prepare_sparql(
+                    raw_sparqls = prepare_sparql(
                         sample.sparql,
                         kg,
                         None,
@@ -427,21 +465,32 @@ def prepare(args: argparse.Namespace):
                         prop_pattern,
                         prefix_patterns,
                         prefixes,
-                        "raw"
+                        "raw",
+                        "only_first",  # doesn't matter
+                        args.skip_incomplete  # doesn't matter
                     )
-                    tf.write(sparql + "\n")
-                    rf.write(raw_sparql + "\n")
+                    assert len(raw_sparqls) == 1
+                    raw_sparql, _ = raw_sparqls[0]
+
+                    for sparql, _ in sparqls:
+                        tf.write(sparql + "\n")
+                        rf.write(raw_sparql + "\n")
+                        inf.write(format_query(
+                            sample.question,
+                            args.version,
+                            kg
+                        ) + "\n")
                 else:
                     tf.write("\n")
                     rf.write(
                         " ".join(r.strip() for r in sample.result)
                         + "\n"
                     )
-                inf.write(format_query(
-                    sample.question,
-                    args.version,
-                    kg
-                ) + "\n")
+                    inf.write(format_query(
+                        sample.question,
+                        args.version,
+                        kg
+                    ) + "\n")
 
         print(
             f"Processed {len(samples):,} {split} samples with "

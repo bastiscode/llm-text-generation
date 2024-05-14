@@ -196,67 +196,6 @@ def load_sparql_constraint(exact: bool) -> grammar.LR1Constraint:
     return grammar.LR1Constraint(sparql_grammar, sparql_lexer, exact)
 
 
-class SPARQLConstraint(Constraint):
-    def __init__(
-        self,
-        sparql_constraint: grammar.LR1Constraint,
-        entity_indices: dict[str, ContIndex],
-        property_indices: dict[str, ContIndex],
-        cont: ContinuationConstraint | None = None
-    ) -> None:
-        self.sparql_constraint = sparql_constraint
-        self.entity_indices = entity_indices
-        self.property_indices = property_indices
-        self.cont_constraint: ContinuationConstraint | None = cont
-
-    @staticmethod
-    def from_vocab_and_indices(
-        vocab: list[bytes],
-        entity_indices: dict[str, ContIndex],
-        property_indices: dict[str, ContIndex],
-        exact: bool = False,
-        prefix: bytes | None = None
-    ) -> 'SPARQLConstraint':
-        sparql_grammar = resources.read_text("deep_sparql.grammar", "sparql.y")
-        sparql_lexer = resources.read_text("deep_sparql.grammar", "sparql.l")
-        sparql = grammar.LR1Constraint(
-            sparql_grammar,
-            sparql_lexer,
-            vocab,
-            exact
-        )
-        if prefix is not None:
-            sparql.reset(prefix)
-        return SPARQLConstraint(sparql, entity_indices, property_indices)
-
-    def get(self) -> tuple[list[int], bool]:
-        if self.cont_constraint is None:
-            return self.sparql_constraint.get()
-
-        raise NotImplementedError
-
-    def is_match(self) -> bool:
-        return self.sparql_constraint.is_match()
-
-    def next(self, index: int) -> None:
-        if self.cont_constraint is not None:
-            self.cont_constraint.next(index)
-        self.sparql_constraint.next(index)
-
-    def reset(self, input: bytes | None = None) -> None:
-        self.sparql_constraint.reset(input)
-        raise NotImplementedError
-
-    def clone(self) -> 'SPARQLConstraint':
-        return SPARQLConstraint(
-            self.sparql_constraint.clone(),
-            self.entity_indices,
-            self.property_indices,
-            None if self.cont_constraint is None else
-            self.cont_constraint.clone()
-        )
-
-
 def _parse_to_string(
     parse: dict,
     pretty: bool = False
@@ -351,13 +290,26 @@ def prettify_sparql_query(
 _KG_PATTERN = re.compile("kg='(\\w+)'")
 
 
-def preprocess_natural_language_query(query: str, kg: str) -> str:
+def preprocess_natural_language_query(
+    query: str,
+    kgs: list[str],
+    information: str | None
+) -> str:
+    assert len(kgs) > 0, "at least one knowledge graph must be specified"
+    kg_list = "\n".join(kgs)
     return f"""\
 Task:
-SPARQL question answering over {kg} knowledge graph
+SPARQL query generation over the specified knowledge graphs given a natural \
+language query and optional additional information / guidance.
+
+Knowledge graphs:
+{kg_list}
 
 Query:
 {query}
+
+Additional information / guidance:
+{information or "None"}
 
 SPARQL:
 """
