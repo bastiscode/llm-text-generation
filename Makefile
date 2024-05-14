@@ -5,13 +5,12 @@ WD_ENT_PREFIXES=data/kg-index/wikidata-entities-index.prefixes.tsv
 WD_PROP=data/kg-index/wikidata-properties-index.tsv
 WD_PROP_PREFIXES=data/kg-index/wikidata-properties-index.prefixes.tsv
 
-ENT_SUFFIX=</kge>
-PROP_SUFFIX=</kgp>
+ENT_SUFFIX="</kge>"
+PROP_SUFFIX="</kgp>"
 
-.PHONY: all
+.PHONY: all data indices
 all: data indices
 
-.PHONY: data
 data:
 	@echo "Preparing simple questions"
 	@python scripts/prepare_data.py \
@@ -64,7 +63,6 @@ data:
 	--property-prefixes $(WD_PROP_PREFIXES) \
 	--progress
 
-.PHONY: indices
 indices:
 	@echo "Creating wikidata continuation indices"
 	@tu.create_continuation_index \
