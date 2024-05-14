@@ -66,15 +66,15 @@ data:
 indices:
 	@echo "Creating wikidata continuation indices"
 	@tu.create_continuation_index \
-	--file data/kg-index/wikidata-properties-index.tsv \
-	--out data/art-index/wikidata-properties.bin \
+	--input-file data/kg-index/wikidata-properties-index.tsv \
+	--output-file data/art-index/wikidata-properties.bin \
 	--common-suffix $(PROP_SUFFIX)
 	@tu.create_continuation_index \
-	--file data/kg-index/wikidata-entities-index.tsv \
-	--out data/art-index/wikidata-entities.bin \
+	--input-file data/kg-index/wikidata-entities-index.tsv \
+	--output-file data/art-index/wikidata-entities.bin \
 	--common-suffix $(ENT_SUFFIX)
 	@tu.create_continuation_index \
-	--file data/kg-index/wikidata-entities-index.small.tsv \
-	--out data/art-index/wikidata-entities.small.bin \
+	--input-file data/kg-index/wikidata-entities-index.small.tsv \
+	--output-file data/art-index/wikidata-entities.small.bin \
 	--common-suffix $(ENT_SUFFIX)
 
