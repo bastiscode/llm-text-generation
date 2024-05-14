@@ -378,7 +378,7 @@ def replace_entities_and_properties(
             sparql
         )
 
-        if done:
+        if done or sparql == org_sparql:
             break
 
         sparqls.append(sparql)
