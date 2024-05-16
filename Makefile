@@ -63,6 +63,8 @@ data:
 	--property-prefixes $(WD_PROP_PREFIXES) \
 	--progress
 
+WD_QUERY_LOG_SOURCE=organic
+
 querylogs:
 	@echo "Preparing wikidata query logs"
 	@python scripts/prepare_wikidata_query_logs.py \
@@ -73,7 +75,7 @@ querylogs:
 	--entity-prefixes $(WD_ENT_PREFIXES) \
 	--property-index $(WD_PROP) \
 	--property-prefixes $(WD_PROP_PREFIXES) \
-	--organic-only \
+	--$(WD_QUERY_LOG_SOURCE)-only \
 	--progress
 
 indices:
