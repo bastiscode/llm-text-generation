@@ -36,6 +36,7 @@ def prepare_file(
     ent_index: KgIndex,
     prop_index: KgIndex,
     seen: set[str],
+    sources: list[str],
     args: argparse.Namespace
 ) -> tuple[int, int, int]:
     num_total = 0
@@ -67,7 +68,7 @@ def prepare_file(
             leave=False
         ):
             sparql, _, source, _ = line.rstrip("\r\n").split("\t")
-            if args.organic_only and source != "organic":
+            if source not in sources:
                 continue
 
             num_total += 1
@@ -184,6 +185,7 @@ def prepare(args: argparse.Namespace):
             entity_index,
             property_index,
             seen,
+            sources,
             args
         )
         num_total += total
