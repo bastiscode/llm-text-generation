@@ -1,34 +1,50 @@
 import argparse
+import json
 import re
 import os
-from functools import partial
 from typing import TextIO
 from urllib.parse import unquote_plus
 
 from tqdm import tqdm
 
-from deep_sparql.utils import (
+from llm_text_generation.sparql.utils import (
     KgIndex,
     general_prefixes,
     load_kg_index,
-    prefix_pattern
+    prefix_pattern,
+    clean_prefixes,
+    replace_vars_and_special_tokens,
+    replace_entities_and_properties
 )
+
+
+def get_prompt(kg: str) -> str:
+    return json.dumps(f"""\
+Task:
+SPARQL query autocompletion over the specified knowledge graphs
+
+Knowledge graphs:
+{kg}
+
+SPARQL:
+""")
 
 
 def prepare_file(
     file: str,
     files: dict[str, TextIO],
-    entity_index: KgIndex,
-    property_index: KgIndex,
+    ent_index: KgIndex,
+    prop_index: KgIndex,
     seen: set[str],
     args: argparse.Namespace
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     num_total = 0
     num_duplicate = 0
+    num_incomplete = 0
 
     prefixes = general_prefixes()
-    prefixes.update(entity_index.prefixes)
-    prefixes.update(property_index.prefixes)
+    prefixes.update(ent_index.prefixes)
+    prefixes.update(prop_index.prefixes)
 
     prefix_patterns = {
         short: re.compile(
@@ -37,8 +53,8 @@ def prepare_file(
         for short, long in prefixes.items()
     }
 
-    entity_prefix_pattern = prefix_pattern(entity_index.prefixes)
-    property_prefix_pattern = prefix_pattern(property_index.prefixes)
+    ent_pattern = prefix_pattern(ent_index.prefixes)
+    prop_pattern = prefix_pattern(prop_index.prefixes)
 
     clean_pattern = re.compile(r"\s+", flags=re.MULTILINE)
 
@@ -62,101 +78,50 @@ def prepare_file(
             seen.add(sparql)
 
             sparql = clean_pattern.sub(" ", unquote_plus(sparql)).strip()
-            sparql_natural = sparql
-            sparql_raw = sparql
 
-            def _replace_entity(match: re.Match) -> str:
-                obj = match.group(0)
-                ents = entity_index.get(obj)
-                if ents is not None:
-                    return f"<kge kg='wikidata'>{ents[0]}</kge>"
-                return obj
-
-            def _replace_property(match: re.Match) -> str:
-                obj = match.group(0)
-                props = property_index.get(obj)
-                if props is not None:
-                    return f"<kgp kg='wikidata'>{props[0]}</kgp>"
-                return obj
-
-            sparql_natural = entity_prefix_pattern.sub(
-                _replace_entity,
-                sparql_natural
+            sparql_raw = clean_prefixes(
+                sparql,
+                prefix_patterns,
+                prefixes
             )
-            sparql_natural = property_prefix_pattern.sub(
-                _replace_property,
-                sparql_natural
+            sparql_raw = replace_vars_and_special_tokens(
+                sparql_raw,
+                args.version
             )
 
-            sparql_prefixes = set()
-            sparql_natural_prefixes = set()
-            for short, pattern in prefix_patterns.items():
-                def _replace_prefix(match: re.Match, seen: set) -> str:
-                    seen.add(short)
-                    return short + (match.group(1) or match.group(2))
+            sparqls_natural, inc = replace_entities_and_properties(
+                sparql,
+                "wikidata",
+                ent_index,
+                prop_index,
+                ent_pattern,
+                prop_pattern,
+                args.version,
+                "in_order"
+            )
+            num_incomplete += inc
 
-                sparql = pattern.sub(
-                    partial(_replace_prefix, seen=sparql_prefixes),
-                    sparql
+            for sparql_natural in sparqls_natural:
+                files[source].write(sparql + "\n")
+                files[f"{source}_input"].write(get_prompt("wikidata") + "\n")
+
+                sparql_natural = clean_prefixes(
+                    sparql_natural,
+                    prefix_patterns,
+                    prefixes
                 )
-                sparql_natural = pattern.sub(
-                    partial(_replace_prefix, seen=sparql_natural_prefixes),
-                    sparql_natural
+                sparql_natural = replace_vars_and_special_tokens(
+                    sparql_natural,
+                    args.version
                 )
 
-            if len(sparql_prefixes) > 0:
-                sparql = " ".join(
-                    f"PREFIX {short} <{prefixes[short]}>"
-                    for short in sparql_prefixes
-                ) + " " + sparql
+                files[f"{source}_natural"].write(sparql_natural + "\n")
+                files[f"{source}_raw"].write(sparql_raw + "\n")
 
-            files[source].write(sparql + "\n")
-
-            if len(sparql_natural_prefixes) > 0:
-                sparql_natural = " ".join(
-                    f"PREFIX {short} <{prefixes[short]}>"
-                    for short in sparql_natural_prefixes
-                ) + " " + sparql_natural
-
-            files[f"{source}_natural"].write(sparql_natural + "\n")
-            files[f"{source}_raw"].write(sparql_raw + "\n")
-
-    return num_total, num_duplicate
+    return num_total, num_duplicate, num_incomplete
 
 
 def prepare(args: argparse.Namespace):
-    sources = []
-    if not args.robotic_only:
-        sources.append("organic")
-    if not args.organic_only:
-        sources.append("robotic")
-
-    files = {}
-    for source in sources:
-        if any(
-            os.path.exists(os.path.join(args.output_dir, f"{source}{ext}.txt"))
-            for ext in ["", ".nl", ".raw"]
-        ):
-            raise FileExistsError(
-                f"output files for {source} in {args.output_dir}"
-                " already exist"
-            )
-
-    for source in sources:
-        files[source] = open(
-            os.path.join(args.output_dir, f"{source}.txt"), "w"
-        )
-        files[f"{source}_natural"] = open(
-            os.path.join(args.output_dir, f"{source}.nl.txt"), "w"
-        )
-        files[f"{source}_raw"] = open(
-            os.path.join(args.output_dir, f"{source}.raw.txt"), "w"
-        )
-
-    num_total = 0
-    num_duplicate = 0
-    seen = set()
-
     entity_index = load_kg_index(
         args.entity_index,
         args.entity_redirects,
@@ -170,13 +135,50 @@ def prepare(args: argparse.Namespace):
         progress=args.progress
     )
 
+    sources = []
+    if not args.robotic_only:
+        sources.append("organic")
+    if not args.organic_only:
+        sources.append("robotic")
+
+    files = {}
+    for source in sources:
+        if any(
+            os.path.exists(os.path.join(args.output_dir, f"{source}{ext}.txt"))
+            for ext in ["", ".nl", ".raw"]
+        ):
+            print(
+                f"output files for {source} in {args.output_dir}"
+                " already exist"
+            )
+            return
+
+    for source in sources:
+        files[source] = open(
+            os.path.join(args.output_dir, f"{source}.txt"), "w"
+        )
+        files[f"{source}_input"] = open(
+            os.path.join(args.output_dir, f"{source}.input.txt"), "w"
+        )
+        files[f"{source}_natural"] = open(
+            os.path.join(args.output_dir, f"{source}.nl.txt"), "w"
+        )
+        files[f"{source}_raw"] = open(
+            os.path.join(args.output_dir, f"{source}.raw.txt"), "w"
+        )
+
+    num_total = 0
+    num_duplicate = 0
+    num_incomplete = 0
+    seen = set()
+
     for file in tqdm(
         args.files,
         desc="processing files",
         leave=False,
         disable=not args.progress
     ):
-        total, duplicate = prepare_file(
+        total, duplicate, incomplete = prepare_file(
             file,
             files,
             entity_index,
@@ -186,14 +188,20 @@ def prepare(args: argparse.Namespace):
         )
         num_total += total
         num_duplicate += duplicate
+        num_incomplete += incomplete
 
     for f in files.values():
         f.close()
 
     print(
         f"{num_duplicate:,} / {num_total:,} duplicate "
-        f"({num_duplicate / num_total:.1%}, organic_only={args.organic_only})"
+        f"({num_duplicate / num_total:.1%})"
     )
+    print(
+        f"{num_incomplete:,} / {num_total:,} incomplete "
+        f"({num_incomplete / num_total:.1%})"
+    )
+    print(f"organic_only: {args.organic_only}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -223,6 +231,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--entity-prefixes", type=str, default=None)
     parser.add_argument("--property-index", type=str, required=True)
     parser.add_argument("--property-prefixes", type=str, default=None)
+    parser.add_argument("--version", choices=["v1", "v2"], default="v2")
     return parser.parse_args()
 
 

@@ -7,13 +7,14 @@ import collections
 from tqdm import tqdm
 from datasets import load_dataset
 
-
-from deep_sparql.utils import (
-    KgIndex,
+from llm_text_generation.sparql.utils import (
     general_prefixes,
     load_kg_index,
     prefix_pattern,
+    clean_prefixes,
+    replace_vars_and_special_tokens,
     preprocess_natural_language_query,
+    replace_entities_and_properties
 )
 
 
@@ -223,167 +224,8 @@ def format_query(
         return f"Generate a SPARQL query over {kg.capitalize()} for " \
             f"the question \"{query}\""
 
-    query = preprocess_natural_language_query(query, kg)
+    query = preprocess_natural_language_query(query, [kg], None)
     return json.dumps(query)
-
-
-PREFIX_PATTERN = re.compile(r"PREFIX\s*(\w*:)\s*<[^>]+>")
-
-
-def format_ent(ent: str, version: str, kg: str) -> str:
-    if version == "v2":
-        return f"<kge kg='{kg}'>{ent}</kge>"
-    else:
-        return f"<boe>{ent}<eoe>"
-
-
-def format_prop(prop: str, version: str, kg: str) -> str:
-    if version == "v2":
-        return f"<kgp kg='{kg}'>{prop}</kgp>"
-    else:
-        return f"<bop>{prop}<eop>"
-
-
-def clean_prefixes(
-    sparql: str,
-    prefix_patterns: dict[str, re.Pattern],
-    prefixes: dict[str, str],
-) -> str:
-    exist = set(PREFIX_PATTERN.findall(sparql))
-    seen = set()
-    for short, pattern in prefix_patterns.items():
-        def _replace_prefix(match: re.Match) -> str:
-            nonlocal seen
-            seen.add(short)
-            return short + (match.group(1) or match.group(2))
-
-        sparql = pattern.sub(_replace_prefix, sparql)
-
-    diff = seen.difference(exist)
-    if len(diff) > 0:
-        sparql = " ".join(
-            f"PREFIX {short} <{prefixes[short]}>"
-            for short in diff
-        ) + " " + sparql
-
-    return sparql
-
-
-def replace_vars_and_special_tokens(
-    sparql: str,
-    version: str,
-) -> str:
-    if version == "v1":
-        # replace variables ?x or $x with <bov>x<eov>
-        sparql = re.sub(
-            r"\?(\w+)|\$(\w+)",
-            lambda m: f"<bov>{m.group(1) or m.group(2)}<eov>",
-            sparql
-        )
-        # replace brackets {, and } with <bob> and <eob>
-        sparql = re.sub(
-            r"{",
-            "<bob>",
-            sparql
-        )
-        sparql = re.sub(
-            r"}",
-            "<eob>",
-            sparql
-        )
-    return sparql
-
-
-def replace_entities_and_properties(
-    sparql: str,
-    kg: str,
-    entity_index: KgIndex,
-    property_index: KgIndex,
-    entity_pattern: re.Pattern,
-    property_pattern: re.Pattern,
-    version: str,
-    replacement: str = "only_first",
-) -> tuple[list[str], bool]:
-    assert replacement in [
-        "only_first",
-        "in_order"
-    ]
-
-    replacements = collections.Counter()
-    incomplete = False
-    done = False
-
-    def _replace_ent(m: re.Match) -> str:
-        nonlocal replacements
-        obj = m.group(0)
-        ents = entity_index.get(obj)
-        if ents is not None:
-            idx = replacements[obj]
-            if idx < len(ents):
-                replacements[obj] += 1
-                obj = format_ent(ents[idx], version, kg)
-            else:
-                nonlocal done
-                done = True
-        else:
-            nonlocal incomplete
-            incomplete = True
-
-        return obj
-
-    def _replace_prop(m: re.Match) -> str:
-        nonlocal replacements
-        obj = m.group(0)
-        props = property_index.get(obj)
-        if props is not None:
-            idx = replacements[obj]
-            if idx < len(props):
-                replacements[obj] += 1
-                obj = format_prop(props[idx], version, kg)
-            else:
-                nonlocal done
-                done = True
-        else:
-            nonlocal incomplete
-            incomplete = True
-
-        return obj
-
-    org_sparql = sparql
-
-    sparql = entity_pattern.sub(
-        _replace_ent,
-        sparql
-    )
-
-    sparql = property_pattern.sub(
-        _replace_prop,
-        sparql
-    )
-
-    sparqls = [sparql]
-    if replacement == "only_first":
-        return sparqls, incomplete
-
-    while True:
-        sparql = org_sparql
-
-        sparql = entity_pattern.sub(
-            _replace_ent,
-            sparql
-        )
-
-        sparql = property_pattern.sub(
-            _replace_prop,
-            sparql
-        )
-
-        if done or sparql == org_sparql:
-            break
-
-        sparqls.append(sparql)
-
-    return sparqls, incomplete
 
 
 def prepare(args: argparse.Namespace):

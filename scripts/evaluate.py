@@ -8,8 +8,8 @@ from tqdm import tqdm
 from text_utils.io import load_text_file
 
 
-from deep_sparql.utils import (
-    KNOWLEDGE_GRAPHS,
+from llm_text_generation.sparql.utils import (
+    QLEVER_URLS,
     calc_f1
 )
 
@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--kg",
         type=str,
-        choices=list(KNOWLEDGE_GRAPHS),
+        choices=list(QLEVER_URLS),
         default="wikidata"
     )
     parser.add_argument("--qlever-endpoint", type=str, default=None)

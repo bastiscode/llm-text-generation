@@ -2,7 +2,7 @@ import argparse
 import requests
 import re
 
-from deep_sparql.utils import QLEVER_URLS
+from llm_text_generation.sparql.utils import QLEVER_URLS
 
 
 def parse_args() -> argparse.Namespace:

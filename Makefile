@@ -8,8 +8,8 @@ WD_PROP_PREFIXES=data/kg-index/wikidata-properties-index.prefixes.tsv
 ENT_SUFFIX="</kge>"
 PROP_SUFFIX="</kgp>"
 
-.PHONY: all data indices
-all: data indices
+.PHONY: all data querylogs indices
+all: data querylogs indices
 
 data:
 	@echo "Preparing simple questions"
@@ -61,6 +61,19 @@ data:
 	--entity-prefixes $(WD_ENT_PREFIXES) \
 	--property-index $(WD_PROP) \
 	--property-prefixes $(WD_PROP_PREFIXES) \
+	--progress
+
+querylogs:
+	@echo "Preparing wikidata query logs"
+	@python scripts/prepare_wikidata_query_logs.py \
+	--files data/wikidata-query-logs/downloads/*.tsv \
+	--output-dir data/wikidata-query-logs \
+	--entity-index $(WD_ENT) \
+	--entity-redirects $(WD_ENT_REDIR) \
+	--entity-prefixes $(WD_ENT_PREFIXES) \
+	--property-index $(WD_PROP) \
+	--property-prefixes $(WD_PROP_PREFIXES) \
+	--organic-only \
 	--progress
 
 indices:
