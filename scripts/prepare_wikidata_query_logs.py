@@ -122,19 +122,6 @@ def prepare_file(
 
 
 def prepare(args: argparse.Namespace):
-    entity_index = load_kg_index(
-        args.entity_index,
-        args.entity_redirects,
-        args.entity_prefixes,
-        args.progress
-    )
-
-    property_index = load_kg_index(
-        args.property_index,
-        prefixes_path=args.property_prefixes,
-        progress=args.progress
-    )
-
     sources = []
     if not args.robotic_only:
         sources.append("organic")
@@ -152,6 +139,19 @@ def prepare(args: argparse.Namespace):
                 " already exist"
             )
             return
+
+    entity_index = load_kg_index(
+        args.entity_index,
+        args.entity_redirects,
+        args.entity_prefixes,
+        args.progress
+    )
+
+    property_index = load_kg_index(
+        args.property_index,
+        prefixes_path=args.property_prefixes,
+        progress=args.progress
+    )
 
     for source in sources:
         files[source] = open(
