@@ -1,0 +1,4 @@
+type: chain
+configs:
+  - type: json_decode
+    input: true

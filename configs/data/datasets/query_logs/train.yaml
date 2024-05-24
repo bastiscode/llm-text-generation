@@ -1,3 +1,0 @@
-type: file_pair
-input_path: data/wikidata-query-logs/train_input.txt
-target_path: data/wikidata-query-logs/train_sparql.txt

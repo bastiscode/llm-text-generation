@@ -309,7 +309,7 @@ Query:
 {query}
 
 Additional information / guidance:
-{information or "None"}
+{information}
 
 SPARQL:
 """

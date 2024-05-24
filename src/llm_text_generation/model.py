@@ -209,11 +209,6 @@ class PretrainedDecoder(Model):
         else:
             raise RuntimeError(f"unkown model type {type(self.model)}")
 
-        assert isinstance(self.model, PreTrainedModel)
-        if kwargs.get("gradient_checkpointing", False):
-            self.model.config.use_cache = False
-            self.model.gradient_checkpointing_enable()
-
     def get_sharding_policy(self) -> ShardingPolicy | None:
         return functools.partial(
             transformer_auto_wrap_policy,
@@ -221,6 +216,11 @@ class PretrainedDecoder(Model):
                 self.layer_cls
             }  # type: ignore
         )
+
+    def enable_gradient_checkpointing(self) -> None:
+        assert isinstance(self.model, PreTrainedModel)
+        self.model.config.use_cache = False
+        self.model.gradient_checkpointing_enable()
 
     def forward(
         self,

@@ -1,0 +1,5 @@
+- relpath(datasets/simplequestions/train.yaml)
+- relpath(datasets/lcquad/train.yaml)
+- relpath(datasets/qald10/train.yaml)
+- relpath(datasets/qawiki/train.yaml)
+- relpath(datasets/mcwq/train.yaml)

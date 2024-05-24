@@ -25,6 +25,8 @@ class TextGenerationTrainer(Trainer):
         cfg: Dict[str, Any]
     ) -> Tuple[nn.Module, ShardingPolicy | None]:
         model = model_from_config(cfg["model"])
+        if cfg.get("gradient_checkpointing", False):
+            model.enable_gradient_checkpointing()
         return model, model.get_sharding_policy()
 
     @classmethod
@@ -46,58 +48,40 @@ class TextGenerationTrainer(Trainer):
             )
         return model
 
-    def _prepare_batch(
-        self,
-        batch: data.DataBatch,
-        train: bool = True
-    ) -> Tuple[Dict[str, Any], torch.Tensor]:
+    def _prepare_batch(self, batch: data.TrainBatch) -> Tuple[
+        Dict[str, Any],
+        torch.Tensor
+    ]:
         assert len(batch) > 0, "got empty batch"
 
-        (
-            token_ids_np,
-            pad_mask_np,
-            lengths,
-            info,
-            labels_np,
-            label_info
-        ) = batch.tensors()
+        inputs = batch.tensors()
+        input_type = inputs.pop("type")
+        assert input_type == "generation", \
+            f"unexpected input type: {input_type}"
 
-        if self.cfg["model"]["type"] == "pretrained_decoder":
-            mask_prefix = self.cfg["train"].get("mask_prefix", False)
-            if (not train or mask_prefix) and "prefix_lengths" in label_info:
-                # mask out the prefix in the labels with -1 to ignore it
-                for i, pfx_l in enumerate(label_info["prefix_lengths"]):
-                    if pfx_l <= 0:
-                        continue
-                    labels_np[i, :pfx_l - 1] = -1
+        # from text_utils import tokenization
+        # tok = tokenization.Tokenizer.from_config(
+        #     self.cfg["inference"]["tokenizer"]
+        # )
+        # for lab in list(inputs["labels"]):
+        #     print(tok.de_tokenize([l for l in lab if l >= 0]))
+        # exit()
 
-            inputs = {
-                "token_ids": torch.from_numpy(
-                    label_info["token_ids"]
-                ).to(
-                    non_blocking=True,
-                    device=self.info.device
-                ),
-                "padding_mask": torch.from_numpy(
-                    label_info["padding_mask"]
-                ).to(
-                    non_blocking=True,
-                    device=self.info.device
-                ),
-                "lengths": label_info["lengths"],
-            }
-
-        else:
-            raise RuntimeError(
-                f"unknown model type: {self.cfg['model']['type']}"
-            )
-
-        labels = torch.from_numpy(labels_np).to(
+        labels = torch.from_numpy(
+            inputs.pop("labels")
+        ).to(
             non_blocking=True,
             dtype=torch.long,
             device=self.info.device
         )
-
+        inputs = {
+            k: torch.from_numpy(v).to(
+                non_blocking=True,
+                dtype=torch.int,
+                device=self.info.device
+            )
+            for k, v in inputs.items()
+        }
         return inputs, labels
 
 

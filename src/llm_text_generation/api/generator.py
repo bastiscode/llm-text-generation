@@ -29,6 +29,7 @@ from llm_text_generation.model import (
     PretrainedDecoder,
     model_from_config
 )
+from llm_text_generation.sparql.utils import preprocess_natural_language_query
 
 _BASE_URL = ""
 _NAME_TO_ZIP = {}
@@ -94,11 +95,11 @@ class TextGenerator(TextProcessor):
             f"on devices {[device_info(d) for d in self.devices]}"
         )
         self.tokenizer = tokenization.Tokenizer.from_config(
-            self.cfg["input_tokenizer"]
+            self.cfg["inference"]["tokenizer"]
         )
 
         # some options for inference
-        self._eos_token = self.cfg["input_tokenizer"]["eos_token"]
+        self._eos_token = self.cfg["inference"]["tokenizer"]["eos_token"]
         self._eos_token_id = self.tokenizer.special_token_to_id(
             self._eos_token
         )
@@ -124,20 +125,6 @@ class TextGenerator(TextProcessor):
         assert isinstance(self.model, Model)
         self.model = self.model.distribute(self.devices)
         return self
-
-    def _build_inference_loader_config(self) -> dict[str, Any]:
-        return {
-            "tokenizer_config": self.cfg["input_tokenizer"],
-            "window_config": {"type": "full"},
-        }
-
-    def _prepare_batch(self, batch: data.InferenceBatch) -> dict[str, Any]:
-        token_ids_np, _, lengths, *_ = batch.tensors()
-        return {
-            "token_ids": token_ids_np,
-            "lengths": lengths,
-            "infos": batch.infos()
-        }
 
     def _prepare_input(
         self,
@@ -177,21 +164,19 @@ class TextGenerator(TextProcessor):
         # add end
         text += template.get("end", "")
 
+        text = preprocess_natural_language_query(text, ["wikidata"], None)
+
         return data.InferenceData(text, info)
 
     @torch.inference_mode()
     def _inference(
         self,
-        inputs: dict[str, Any],
+        batch: data.InferenceBatch,
         yield_intermediate: bool = False
     ) -> Iterator[Any]:
-        initial_token_ids = [
-            list(token_ids[:length])
-            for token_ids, length in zip(
-                inputs["token_ids"],
-                inputs["lengths"]
-            )
-        ]
+        infos = batch.infos()
+        initial_token_ids = batch.token_ids()
+        print(self.tokenizer.de_tokenize(initial_token_ids[0], False))
 
         # decode fn gets in token ids and additional kwargs,
         # and return logits over next tokens and additional info
@@ -225,7 +210,7 @@ class TextGenerator(TextProcessor):
             assert self._beam_width is not None
             logit_fns = []
             initial_beams = []
-            for token_ids, info in zip(initial_token_ids, inputs["infos"]):
+            for token_ids, info in zip(initial_token_ids, infos):
                 beam = Beam(token_ids, [0.0] * len(token_ids))
 
                 if "constraint" in info:
@@ -309,7 +294,7 @@ class TextGenerator(TextProcessor):
 
         logit_fns = []
         constraints: dict[int, Constraint] = {}
-        for i, info in enumerate(inputs["infos"]):
+        for i, info in enumerate(infos):
             if "constraint" in info:
                 constraints[i] = self._get_constraint(info["constraint"])
             elif self._constraint is not None:
@@ -484,9 +469,8 @@ class TextGenerator(TextProcessor):
             iter([self._prepare_input(ipt)]),
             1,
         ))
-        inputs = self._prepare_batch(batch)
         items = batch.items()
-        for outputs in self._inference(inputs, yield_intermediate=True):
+        for outputs in self._inference(batch, yield_intermediate=True):
             yield self._process_results(items, outputs).text
 
     def generate_iter(
@@ -530,7 +514,7 @@ class TextGenerator(TextProcessor):
                 show_progress
             )
 
-        return (output.text for output in outputs)
+        yield from (output.text for output in outputs)
 
     def generate_file(
         self,

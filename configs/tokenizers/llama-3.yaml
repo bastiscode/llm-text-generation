@@ -3,6 +3,6 @@ tokenize:
   path: relpath(llama-3/tokenizer.json)
 special:
   tokens:
-    - <|begin_of_text|>
+    - <|end_of_text|>
   pad: <|end_of_text|>
 eos_token: <|end_of_text|>

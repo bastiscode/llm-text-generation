@@ -1,0 +1,3 @@
+type: pretrained_decoder
+name: llama-3-8b
+gradient_checkpointing: env(GRADIENT_CHECKPOINTING:false)

@@ -1,0 +1,3 @@
+type: file_pair
+input_path: data/wikidata-query-logs/robotic.input.txt
+target_path: data/wikidata-query-logs/robotic.nl.txt

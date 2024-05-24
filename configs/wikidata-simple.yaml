@@ -1,0 +1,69 @@
+experiment:
+  name: env(MODEL)-wdsimple
+
+seed: env(SEED:22)
+
+model: file(models/env(MODEL).yaml)
+
+train:
+  peft: file(peft/env(PEFT:none).yaml)
+  compile: env(COMPILE:false)
+  gradient_checkpointing: env(GRADIENT_CHECKPOINTING:false)
+  mixed_precision: env(MIXED_PRECISION:null)
+  clip_grad_norm: env(CLIP_GRAD_NORM:1.0)
+  num_epochs: env(NUM_EPOCHS:1)
+  eval_interval: eval(1 / env(EVAL_N:4))
+  log_interval: eval(1 / env(LOG_N:100))
+  step_interval: eval(1 / env(STEP_N:100000))
+  mask_prefix: env(MASK_PREFIX:true)
+  distributed:
+    type: env(DIST_TYPE:DDP)
+    strategy: env(DIST_SHARD:NO_SHARD)
+    offload: env(DIST_OFFLOAD:false)
+    prefetch: env(DIST_PREFETCH:true)
+    shard_size: env(DIST_SHARD_SIZE:null)
+  loss:
+    type: sequence
+    loss:
+      type: cross_entropy
+      ignore_index: -1
+      label_smoothing: env(LABEL_SMOOTHING:0.0)
+  optimizer:
+    type: adamw
+    lr: env(LR:0.00005)
+    weight_decay: env(WEIGHT_DECAY:0.01)
+    fused: env(FUSED:false)
+    foreach: env(FOREACH:null)
+  lr_scheduler:
+    type: cosine_with_warmup
+    warmup_steps: env(WARMUP:0.05)
+  data:
+    strategy: weighted
+    shuffle: true
+    sort: env(SORT:false)
+    limit: env(TRAIN_LIMIT:null)
+    max_length: env(MAX_LENGTH:512)
+    buffer_size: env(BUFFER_SIZE:512)
+    prefetch_factor: env(PREFETCH_FACTOR:512)
+    num_threads: eval(env(THREADS:None) or len(os.sched_getaffinity(0)) // 2)
+    batch_limit: env(BATCH_LIMIT:8)
+    batch_limit_type: batch_size
+    pipeline:
+      preprocessing: file(preprocessings/decode_input.yaml)
+      task:
+        type: generation
+        tokenizer: file(tokenizers/env(MODEL)-train.yaml)
+        mask_input: true
+      postprocessing: file(postprocessings/clip.yaml)
+    sources:
+      - file(data/datasets/simplequestions/train.yaml)
+
+val:
+  data:
+    - file(data/datasets/simplequestions/val.yaml)
+  cooldown: env(COOLDOWN:0)
+
+inference:
+  tokenizer: file(tokenizers/env(MODEL).yaml)
+  window:
+    type: full
