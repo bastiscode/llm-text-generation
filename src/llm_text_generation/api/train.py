@@ -59,12 +59,13 @@ class TextGenerationTrainer(Trainer):
         assert input_type == "generation", \
             f"unexpected input type: {input_type}"
 
+        # print([(item.data.input, item.data.target) for item in batch.items()])
         # from text_utils import tokenization
         # tok = tokenization.Tokenizer.from_config(
         #     self.cfg["inference"]["tokenizer"]
         # )
         # for lab in list(inputs["labels"]):
-        #     print(tok.de_tokenize([l for l in lab if l >= 0]))
+        #     print(tok.de_tokenize([l for l in lab if l >= 0], False))
         # exit()
 
         labels = torch.from_numpy(

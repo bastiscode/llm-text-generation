@@ -7,4 +7,3 @@ special:
     - <unk>
   pad: <|endoftext|>
   unk: <unk>
-eos_token: <|endoftext|>

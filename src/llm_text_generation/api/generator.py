@@ -99,7 +99,7 @@ class TextGenerator(TextProcessor):
         )
 
         # some options for inference
-        self._eos_token = self.cfg["inference"]["tokenizer"]["eos_token"]
+        self._eos_token = self.cfg["inference"]["eos"]
         self._eos_token_id = self.tokenizer.special_token_to_id(
             self._eos_token
         )
@@ -176,7 +176,6 @@ class TextGenerator(TextProcessor):
     ) -> Iterator[Any]:
         infos = batch.infos()
         initial_token_ids = batch.token_ids()
-        print(self.tokenizer.de_tokenize(initial_token_ids[0], False))
 
         # decode fn gets in token ids and additional kwargs,
         # and return logits over next tokens and additional info

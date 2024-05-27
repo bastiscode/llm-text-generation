@@ -5,4 +5,3 @@ special:
   tokens:
     - <|end_of_text|>
   pad: <|end_of_text|>
-eos_token: <|end_of_text|>
