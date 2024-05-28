@@ -18,11 +18,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("model")
     parser.add_argument("-e", "--examples", type=str, default=None)
     parser.add_argument("-ne", "--num-examples", type=int, default=5)
+    parser.add_argument("--api", type=str, default=None)
+    parser.add_argument("--seed", type=int, default=22)
     return parser.parse_args()
 
 
 def evaluate(args: argparse.Namespace):
     test = load_samples(args.input)
+    random.seed(args.seed)
 
     examples = []
     if args.examples is not None:
@@ -41,7 +44,7 @@ def evaluate(args: argparse.Namespace):
             entity,
             random.sample(examples, min(len(examples), args.num_examples)),
         )
-        pred = run_model([p], [r], args.model)[0]
+        pred = run_model([p], [r], args.model, args.api)[0]
 
         if any(p in gt for _, p in pred):
             correct += 1
