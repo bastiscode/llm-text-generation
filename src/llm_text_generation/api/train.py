@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Callable
 
 import torch
 from torch import nn

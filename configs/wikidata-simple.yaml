@@ -15,7 +15,6 @@ train:
   eval_interval: eval(1 / env(EVAL_N:4))
   log_interval: eval(1 / env(LOG_N:100))
   step_interval: eval(1 / env(STEP_N:100000))
-  mask_prefix: env(MASK_PREFIX:true)
   distributed:
     type: env(DIST_TYPE:DDP)
     strategy: env(DIST_SHARD:NO_SHARD)
@@ -32,7 +31,9 @@ train:
     type: adamw
     lr: env(LR:0.00005)
     weight_decay: env(WEIGHT_DECAY:0.01)
-    fused: env(FUSED:false)
+    weight_decay_modules:
+      Conv1D: [weight]
+    fused: env(FUSED:null)
     foreach: env(FOREACH:null)
   lr_scheduler:
     type: cosine_with_warmup
