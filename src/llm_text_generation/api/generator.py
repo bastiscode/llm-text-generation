@@ -352,8 +352,6 @@ class TextGenerator(TextProcessor):
             )
 
         progress_desc = "Generating text"
-        progress_total = None
-        progress_unit = "byte"
 
         yield from (
             output.text for output in self._process(
@@ -365,8 +363,8 @@ class TextGenerator(TextProcessor):
                 batch_max_tokens,
                 sort,
                 num_threads,
-                progress_total,
-                progress_unit,
-                show_progress
+                progress_total=len(inputs)  # type: ignore
+                if hasattr(inputs, "__len__") else None,
+                show_progress=show_progress
             )
         )
