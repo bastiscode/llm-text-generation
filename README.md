@@ -4,7 +4,7 @@ Generate natural language text with large language models.
 
 ### Installation
 
-This project is mainly tested with Python 3.10, but should work fine with Python 3.8 and newer versions
+This project requires Python 3.10 or higher.
 
 #### From PyPI
 

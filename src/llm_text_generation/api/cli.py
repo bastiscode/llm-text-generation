@@ -1,5 +1,9 @@
 from io import TextIOWrapper
-from typing import Iterator
+from typing import Iterator, Iterable
+import random
+import json
+
+import torch
 
 from text_utils.api.cli import TextProcessingCli
 from text_utils.api.processor import TextProcessor
@@ -42,40 +46,30 @@ class TextGenerationCli(TextProcessingCli):
             beam_width=self.args.beam_width,
             constraint=constraint,
             max_length=self.args.max_length,
-            use_cache=not self.args.no_kv_cache,
+            use_cache=self.args.kv_cache,
             full_outputs=self.args.full_outputs
         )
         return gen
 
+    def format_output(self, output: str) -> Iterable[str]:
+        if self.args.output_format == "jsonl":
+            return [json.dumps(output)]
+        return [output]
+
     def process_iter(
         self,
-        processor: TextGenerator,
+        processor: TextProcessor,
         iter: Iterator[str]
     ) -> Iterator[str]:
-        yield from processor.generate_iter(
-            iter,
+        assert isinstance(processor, TextGenerator)
+        yield from processor.generate(
+            (json.loads(item) if self.args.input_format == "jsonl"
+             else item for item in iter),
             batch_size=self.args.batch_size,
             batch_max_tokens=self.args.batch_max_tokens,
             sort=not self.args.unsorted,
             num_threads=self.args.num_threads,
             show_progress=self.args.progress,
-        )
-
-    def process_file(
-        self,
-        processor: TextGenerator,
-        input_file: str,
-        output_file: str | TextIOWrapper
-    ):
-        processor.generate_file(
-            input_file,
-            output_file,
-            batch_size=self.args.batch_size,
-            batch_max_tokens=self.args.batch_max_tokens,
-            sort=not self.args.unsorted,
-            num_threads=self.args.num_threads,
-            show_progress=self.args.progress,
-            format=self.args.file_format
         )
 
 
@@ -94,7 +88,7 @@ def main():
     parser.add_argument(
         "--beam-width",
         type=int,
-        default=None,
+        default=1,
         help="Beam width to use for beam search decoding"
     )
     parser.add_argument(
@@ -116,7 +110,7 @@ def main():
         help="Temperature to use during sampling"
     )
     parser.add_argument(
-        "--no-kv-cache",
+        "--kv-cache",
         action="store_true",
         help="Whether to use key and value caches during decoding"
     )
@@ -148,6 +142,7 @@ def main():
         nargs=2,
         type=str,
         default=None,
+        metavar=("GRAMMAR", "LEXER"),
         help="LR(1) grammar and lexer definitions to constrain text generation"
     )
     constraints.add_argument(
@@ -156,6 +151,7 @@ def main():
         nargs=2,
         type=str,
         default=None,
+        metavar=("GRAMMAR_FILE", "LEXER_FILE"),
         help="Paths to files containing a LR(1) grammar and lexer definitions "
         "to constrain text generation"
     )
@@ -174,13 +170,28 @@ def main():
         "(default is only generated text)"
     )
     parser.add_argument(
-        "--file-format",
-        choices=["jsonl", "lines", "text"],
+        "--input-format",
+        choices=["text", "jsonl"],
         default="text",
-        help="Whether to treat input/output files as jsonl, line-separated, "
-        "or single piece of text"
+        help="Whether to treat input files as jsonl or text"
+    )
+    parser.add_argument(
+        "--output-format",
+        choices=["text", "jsonl"],
+        default="text",
+        help="Whether to format output as jsonl or text"
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Seed for random number generator"
     )
     args = parser.parse_args()
+    if args.seed is not None:
+        random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        torch.cuda.manual_seed_all(args.seed)
     # set default device to auto if not set
     # (different from underlying library which sets a single gpu as default)
     args.device = args.device or "auto"

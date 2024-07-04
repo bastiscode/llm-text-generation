@@ -1,3 +1,0 @@
-type: pretrained_decoder
-name: env(LLAMA_MODEL:llama-2-7b)
-gradient_checkpointing: env(GRADIENT_CHECKPOINTING:false)

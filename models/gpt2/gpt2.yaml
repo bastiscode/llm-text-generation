@@ -1,18 +1,15 @@
 experiment:
-  name: env(GPT2_MODEL:gpt2-xl)
-input_tokenizer:
-  eos_token: <|endoftext|>
-  special:
-    pad: <|endoftext|>
-    tokens:
-    - <|endoftext|>
-  tokenize:
-    path: relpath(gpt2/tokenizer.json)
-    type: huggingface
+  name: env(MODEL:gpt2)
+
 model:
-  name: env(GPT2_MODEL:gpt2-xl)
+  model: env(MODEL:gpt2)
   type: pretrained_decoder
+
 seed: 22
-train:
-  data:
-    max_length: 512
+
+inference:
+  max_length: 512
+  window:
+    type: full
+  tokenizer: file(../../configs/tokenizers/gpt2.yaml)
+  eos_token: <|endoftext|>

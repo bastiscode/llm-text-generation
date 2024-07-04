@@ -1,16 +1,8 @@
 experiment:
   name: llama-3-70b
-input_tokenizer:
-  tokenize:
-    type: huggingface
-    path: relpath(llama-3/tokenizer.json)
-  special:
-    tokens:
-      - <|begin_of_text|>
-    pad: <|end_of_text|>
-  eos_token: <|end_of_text|>
+
 model:
-  name: llama-3-70b
+  model: llama-3-70b
   type: pretrained_decoder
   load_in_4bit: env(LLAMA3_4BIT:true)
   # setup for 3x24gb. 26,32,22
@@ -21,7 +13,12 @@ model:
     model.layers.{58..79}: 2
     model.norm: 2
     lm_head: 2
+
 seed: 22
-train:
-  data:
-    max_length: 8192
+
+inference:
+  max_length: 8192
+  window:
+    type: full
+  tokenizer: file(../../configs/tokenizers/llama-3.yaml)
+  eos_token: <|end_of_text|>

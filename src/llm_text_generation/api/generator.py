@@ -2,11 +2,10 @@ from io import TextIOWrapper
 import os
 import json
 import sys
-from typing import Any, Iterator
+from typing import Any, Iterable, Iterator
 
 import torch
 from torch import nn
-from peft import get_peft_model
 
 from text_utils import data, tokenization, grammar
 from text_utils.api.processor import ModelInfo, TextProcessor
@@ -14,7 +13,6 @@ from text_utils.api.utils import (
     Device,
     device_info,
     get_devices,
-    get_peft_config
 )
 from text_utils.inference import (
     utils as inference_utils,
@@ -56,29 +54,17 @@ class TextGenerator(TextProcessor):
     def _model_from_config(
         cls,
         cfg: dict[str, Any],
-        _: Device
+        device: Device
     ) -> nn.Module:
-        model = model_from_config(cfg["model"])
-        peft = cfg["train"].get("peft", None)
-        if peft is not None:
-            peft_cfg = get_peft_config(peft)
-            model.model = get_peft_model(
-                model.model,  # type: ignore
-                peft_cfg
-            )
-        return model
+        return model_from_config(cfg["model"])
 
     @property
     def max_length(self) -> int:
-        cfg_max_length = self.cfg["train"]["data"].get("max_length", 512)
+        cfg_max_length = self.cfg["inference"].get("max_length", 512)
         return min(
             self._max_length or cfg_max_length,
             cfg_max_length
         )
-
-    @property
-    def context_length(self) -> int:
-        raise NotImplementedError
 
     def __init__(
         self,
@@ -94,28 +80,33 @@ class TextGenerator(TextProcessor):
             f"on devices {[device_info(d) for d in self.devices]}"
         )
         self.tokenizer = tokenization.Tokenizer.from_config(
-            self.cfg["input_tokenizer"]
+            self.cfg["inference"]["tokenizer"]
         )
 
         # some options for inference
-        self._eos_token = self.cfg["input_tokenizer"]["eos_token"]
-        self._eos_token_id = self.tokenizer.special_token_to_id(
+        self._eos_token = self.cfg["inference"]["eos_token"]
+        self._eos_token_id = self.tokenizer.token_to_id(
             self._eos_token
         )
 
-        # continuations are the tokens from the vocab
+        # continuations are the postprocessed tokens from the vocab
         # (already sorted by token id)
-        self._continuations = self.tokenizer.get_vocab()
+        self._continuations = self.tokenizer.get_continuations(initial=False)
+        self._initial_continuations = self.tokenizer.get_continuations(
+            initial=True
+        )
         self._sampling_strategy = "greedy"
         self._beam_width = 1
         self._temp = 1.0
         self._top_k = 5
-        self._use_cache = True
+        self._use_cache = False
         self._full_outputs = False
         self._max_length = None
         self._constraint = None
 
-        self.model = self.model.compile(**self.cfg.get("compile", {}))
+        self.model = self.model.compile(
+            **self.cfg["inference"].get("compile", {})
+        )
 
     def to(self, device: Device) -> "TextGenerator":
         self.devices = get_devices(device)
@@ -125,40 +116,19 @@ class TextGenerator(TextProcessor):
         self.model = self.model.distribute(self.devices)
         return self
 
-    def _build_inference_loader_config(self) -> dict[str, Any]:
-        return {
-            "tokenizer_config": self.cfg["input_tokenizer"],
-            "window_config": {"type": "full"},
-        }
-
-    def _prepare_batch(self, batch: data.InferenceBatch) -> dict[str, Any]:
-        token_ids_np, _, lengths, *_ = batch.tensors()
-        return {
-            "token_ids": token_ids_np,
-            "lengths": lengths,
-            "infos": batch.infos()
-        }
-
     def _prepare_input(
         self,
         ipt: str | Chat | tuple[str | Chat, Const],
-        json_decode: bool = False
     ) -> data.InferenceData:
         info = {}
         if isinstance(ipt, tuple):
             ipt, constraint = ipt
             info["constraint"] = constraint
 
-        if json_decode:
-            assert isinstance(ipt, str)
-            ipt = json.loads(ipt)
-            assert isinstance(ipt, (str, list)), \
-                "expected text or chat as json encoded string"
-
         if isinstance(ipt, str):
             ipt = [{"role": "user", "text": ipt}]
 
-        template = self.cfg.get("chat_template", {})
+        template = self.cfg["inference"].get("chat_template", {})
 
         assert len(ipt) > 0, "expected non-empty chat"
         assert ipt[-1]["role"] == "user", "expected user to be last"
@@ -180,19 +150,10 @@ class TextGenerator(TextProcessor):
         return data.InferenceData(text, info)
 
     @torch.inference_mode()
-    def _inference(
+    def _live_inference(
         self,
-        inputs: dict[str, Any],
-        yield_intermediate: bool = False
-    ) -> Iterator[Any]:
-        initial_token_ids = [
-            list(token_ids[:length])
-            for token_ids, length in zip(
-                inputs["token_ids"],
-                inputs["lengths"]
-            )
-        ]
-
+        batch: data.InferenceBatch,
+    ) -> Iterator[list[Beam]]:
         # decode fn gets in token ids and additional kwargs,
         # and return logits over next tokens and additional info
         def _decode_fn(
@@ -221,169 +182,92 @@ class TextGenerator(TextProcessor):
                 for cache in info["kv_cache"]
             )
 
-        if (self._beam_width or 1) > 1:
-            assert self._beam_width is not None
-            logit_fns = []
-            initial_beams = []
-            for token_ids, info in zip(initial_token_ids, inputs["infos"]):
-                beam = Beam(token_ids, [0.0] * len(token_ids))
-
-                if "constraint" in info:
-                    beam.info["constraint"] = self._get_constraint(
-                        info["constraint"]
-                    )
-                elif self._constraint is not None:
-                    constraint = self._constraint.clone()
-                    constraint.reset()
-                    beam.info["constraint"] = constraint
-
-                initial_beams.append(beam)
-
-            # add constrain logit fn if any of the beams have a constraint
-            if any(
-                "constraint" in beam.info
-                for beam in initial_beams
-            ):
-                logit_fns.append(inference_utils.constraint_logit_fn(
-                    lambda beam: beam.info.get(
-                        "constraint", None
-                    ) if isinstance(beam, Beam) else None,
-                    self._eos_token_id
-                ))
-
-                def _update_beam(beam: Beam, token_id: int, log_p: float):
-                    new_beam = Beam.from_beam(beam, token_id, log_p)
-                    beam_const = beam.info.get("constraint", None)
-                    if token_id == self._eos_token_id or beam_const is None:
-                        return new_beam
-
-                    beam_const = beam_const.clone()
-                    beam_const.next(token_id)
-                    new_beam.info["constraint"] = beam_const
-                    return new_beam
-
-                candidate_fn = _update_beam
-            else:
-                candidate_fn = inference_utils.default_beam_candidate_fn()
-
-            if self._sampling_strategy == "greedy":
-                sample_fn = inference_utils.beam_greedy()
-            elif self._sampling_strategy == "top_k":
-                assert self._top_k >= self._beam_width, \
-                    "top k must be greater than or equal to beam width"
-                logit_fns.append(inference_utils.top_k_masking(self._top_k))
-                sample_fn = inference_utils.beam_sample()
-            else:
-                logit_fns.append(inference_utils.nucleus_masking(self._top_p))
-                sample_fn = inference_utils.beam_sample()
-
-            if self._sampling_strategy != "greedy" and self._temp != 1.0:
-                logit_fns.append(inference_utils.temperature_scaling(
-                    self._temp
-                ))
-
-            def beam_stop_fn(beam: Beam) -> bool:
-                return beam.token_ids[-1] == self._eos_token_id
-
-            yield from (
-                [beam[0].token_ids for beam in beams]
-                for beams in
-                beam_search(
-                    decode_fn=_decode_fn,
-                    initial=initial_beams,
-                    pad_token_id=self.tokenizer.pad_token_id(),
-                    max_length=self.max_length,
-                    stop_fn=beam_stop_fn,
-                    device=self.devices[0],
-                    normalize_by_length=True,
-                    alpha=1.0,
-                    beam_width=self._beam_width,
-                    sample_fn=sample_fn,
-                    candidate_fn=candidate_fn,
-                    logit_fns=logit_fns,
-                    kwargs_update_fn=_kwargs_update_fn,
-                    yield_intermediate=yield_intermediate
-                )
-            )
-            return
-
         logit_fns = []
-        constraints: dict[int, Constraint] = {}
-        for i, info in enumerate(inputs["infos"]):
+        initial_beams = []
+        for token_ids, info in zip(batch.token_ids(), batch.infos()):
+            beam = Beam(token_ids, [0.0] * len(token_ids))
+
             if "constraint" in info:
-                constraints[i] = self._get_constraint(info["constraint"])
+                beam.info["constraint"] = self._get_constraint(
+                    info["constraint"]
+                )
             elif self._constraint is not None:
                 constraint = self._constraint.clone()
                 constraint.reset()
-                constraints[i] = constraint
+                beam.info["constraint"] = constraint
 
-        # add constrain logit fn if any of the batch elements
-        # has a constraint
-        if len(constraints) > 0:
+            initial_beams.append(beam)
+
+        # add constrain logit fn if any of the beams have a constraint
+        if any(
+            "constraint" in beam.info
+            for beam in initial_beams
+        ):
             logit_fns.append(inference_utils.constraint_logit_fn(
-                lambda idx: constraints.get(
-                    idx, None
-                ) if isinstance(idx, int) else None,
+                lambda beam: beam.info.get(
+                    "constraint", None
+                ) if isinstance(beam, Beam) else None,
                 self._eos_token_id
             ))
 
+            def _update_beam(
+                beam: Beam,
+                token_id: int,
+                log_p: float
+            ) -> Beam | None:
+                beam = Beam.from_beam(beam, token_id, log_p)
+                beam_const = beam.info.get("constraint", None)
+                if token_id == self._eos_token_id or beam_const is None:
+                    return beam
+                elif beam_const.is_invalid():
+                    return None
+
+                beam_const = beam_const.clone()
+                beam_const.next(token_id)
+                beam.info["constraint"] = beam_const
+                return beam
+
+            candidate_fn = _update_beam
+        else:
+            candidate_fn = inference_utils.default_beam_candidate_fn()
+
         if self._sampling_strategy == "greedy":
-            sample_fn = inference_utils.greedy()
+            sample_fn = inference_utils.beam_greedy()
         elif self._sampling_strategy == "top_k":
+            assert self._top_k >= self._beam_width, \
+                "top k must be greater than or equal to beam width"
             logit_fns.append(inference_utils.top_k_masking(self._top_k))
-            sample_fn = inference_utils.sample()
+            sample_fn = inference_utils.beam_sample()
         else:
             logit_fns.append(inference_utils.nucleus_masking(self._top_p))
-            sample_fn = inference_utils.sample()
+            sample_fn = inference_utils.beam_sample()
 
         if self._sampling_strategy != "greedy" and self._temp != 1.0:
             logit_fns.append(inference_utils.temperature_scaling(
                 self._temp
             ))
 
-        # if there are constraints we need to update them
-        # after sampling a token
-        if len(constraints) > 0:
-            sample_fn = inference_utils.constraint_sample_fn(
-                lambda idx: constraints.get(idx, None),
-                sample_fn,
-                self._eos_token_id
-            )
+        def beam_stop_fn(beam: Beam) -> bool:
+            return beam.token_ids[-1] == self._eos_token_id
 
-        def stop_fn(token_ids: torch.Tensor, _: list[int]) -> torch.Tensor:
-            return token_ids == self._eos_token_id
-
-        yield from search(
+        for output in beam_search(
             decode_fn=_decode_fn,
-            initial_token_ids=initial_token_ids,
+            initial=initial_beams,
             pad_token_id=self.tokenizer.pad_token_id(),
             max_length=self.max_length,
-            sample_fn=sample_fn,
-            logit_fns=logit_fns,
-            stop_fn=stop_fn,
+            stop_fn=beam_stop_fn,
             device=self.devices[0],
+            normalize_by_length=True,
+            alpha=1.0,
+            beam_width=self._beam_width,
+            sample_fn=sample_fn,
+            candidate_fn=candidate_fn,
+            logit_fns=logit_fns,
             kwargs_update_fn=_kwargs_update_fn,
-            yield_intermediate=yield_intermediate
-        )
-
-    def _process_results(
-        self,
-        items: list[data.InferenceItem],
-        outputs: list[Any],
-    ) -> data.InferenceData:
-        assert len(outputs) == 1, "expected single output"
-        output = outputs[0]
-        item = items[0]
-
-        text = self.tokenizer.de_tokenize(
-            item.tokenization.token_ids + output
-        )
-        if not self._full_outputs:
-            input_text = self.tokenizer.de_tokenize(
-                item.tokenization.token_ids
-            )
-            text = text[len(input_text):]
-        return data.InferenceData(text, item.data.info)
+            return_full=self._full_outputs,
+            yield_intermediate=True
+        ):
+            yield [beams[0] for beams in output]
 
     def _get_constraint(
         self,
@@ -409,10 +293,10 @@ class TextGenerator(TextProcessor):
         temperature: float = 1.0,
         top_k: int = 10,
         top_p: float = 0.95,
-        beam_width: int | None = None,
+        beam_width: int = 1,
         constraint: Const | None = None,
         max_length: int | None = None,
-        use_cache: bool = True,
+        use_cache: bool = False,
         full_outputs: bool = False
     ) -> None:
         assert sampling_strategy in ["greedy", "top_k", "top_p"]
@@ -429,183 +313,64 @@ class TextGenerator(TextProcessor):
         self._use_cache = use_cache
         self._full_outputs = full_outputs
 
-    def generate(
-        self,
-        inputs: list[str | Chat | tuple[str | Chat, Const]],
-        batch_size: int = 16,
-        batch_max_tokens: int | None = None,
-        sort: bool = True,
-        num_threads: int | None = None,
-        show_progress: bool = False,
-    ) -> str | list[str]:
-        loader = self._get_loader(
-            (
-                self._prepare_input(ipt)
-                for ipt in inputs
-            ),
-            batch_size,
-            batch_max_tokens,
-            sort,
-            num_threads,
-        )
-
-        progress_desc = f"Generating text from " \
-            f"{len(inputs)} sequences"
-        progress_total = len(inputs)
-        progress_unit = "seq"
-
-        if sort:
-            outputs = self._process_sorted(
-                loader,
-                progress_desc,
-                progress_total,
-                progress_unit,
-                show_progress
-            )
-        else:
-            outputs = self._process_unsorted(
-                loader,
-                progress_desc,
-                progress_total,
-                progress_unit,
-                show_progress
-            )
-
-        return [
-            output.text
-            for output in outputs
-        ]
-
     def generate_live(
         self,
         ipt: str | Chat | tuple[str | Chat, Const],
     ) -> Iterator[str]:
-        batch = next(self._get_loader(
-            iter([self._prepare_input(ipt)]),
-            1,
+        input = self._prepare_input(ipt)
+        batch = next(data.InferenceLoader.from_iterator(
+            iter([input]),
+            self.cfg["inference"]["tokenizer"],
+            self.cfg["inference"].get("window", {"type": "full"}),
         ))
-        inputs = self._prepare_batch(batch)
-        items = batch.items()
-        for outputs in self._inference(inputs, yield_intermediate=True):
-            yield self._process_results(items, outputs).text
 
-    def generate_iter(
+        for output in self._live_inference(batch):
+            yield self.tokenizer.de_tokenize(output[0].token_ids)
+
+    def generate(
         self,
-        iter: Iterator[str | Chat | tuple[str | Chat, Const]],
+        inputs: Iterable[str | Chat | tuple[str | Chat, Const]],
         batch_size: int = 16,
         batch_max_tokens: int | None = None,
         sort: bool = True,
         num_threads: int | None = None,
         show_progress: bool = False,
     ) -> Iterator[str]:
-        loader = self._get_loader(
-            (
-                self._prepare_input(ipt)
-                for ipt in iter
-            ),
-            batch_size,
-            batch_max_tokens,
-            sort,
-            num_threads,
-        )
+        def inference_fn(
+            batch: data.InferenceBatch
+        ) -> list[Beam]:
+            *_, last = self._live_inference(batch)
+            return last
 
-        progress_desc = "Generating text from iterator"
-        progress_total = sys.maxsize
+        def postprocessing_fn(
+            items: list[data.InferenceItem],
+            outputs: list[Beam]
+        ) -> data.InferenceData:
+            assert len(items) == 1 and len(outputs) == 1
+            output = outputs[0]
+            item = items[0]
+
+            return data.InferenceData(
+                self.tokenizer.de_tokenize(output.token_ids),
+                item.data.info
+            )
+
+        progress_desc = "Generating text"
+        progress_total = None
         progress_unit = "byte"
 
-        if sort:
-            outputs = self._process_sorted(
-                loader,
+        yield from (
+            output.text for output in self._process(
+                (self._prepare_input(ipt) for ipt in inputs),
+                inference_fn,
+                postprocessing_fn,
                 progress_desc,
+                batch_size,
+                batch_max_tokens,
+                sort,
+                num_threads,
                 progress_total,
                 progress_unit,
                 show_progress
             )
-        else:
-            outputs = self._process_unsorted(
-                loader,
-                progress_desc,
-                progress_total,
-                progress_unit,
-                show_progress
-            )
-
-        yield from (output.text for output in outputs)
-
-    def generate_file(
-        self,
-        input_file: str,
-        output_file: TextIOWrapper | str | None = None,
-        batch_size: int = 16,
-        batch_max_tokens: int | None = None,
-        sort: bool = True,
-        num_threads: int | None = None,
-        show_progress: bool = False,
-        format: str = "jsonl"
-    ) -> Iterator[str] | None:
-        assert format in ["jsonl", "lines", "text"], \
-            f"invalid format {format}, must be jsonl, lines, or text"
-
-        if format == "lines" or format == "jsonl":
-            inputs = (
-                self._prepare_input(line.rstrip("\r\n"), format == "jsonl")
-                for line in open(input_file, "r")
-            )
-        else:
-            inputs = iter([self._prepare_input(open(input_file, "r").read())])
-
-        loader = self._get_loader(
-            inputs,
-            batch_size,
-            batch_max_tokens,
-            sort,
-            num_threads,
         )
-
-        file_name = input_file \
-            if len(input_file) < 32 else f"...{input_file[-29:]}"
-        progress_desc = f"Generating text from {file_name}"
-        progress_total = os.path.getsize(input_file)
-        progress_unit = "byte"
-
-        if sort:
-            outputs = iter(self._process_sorted(
-                loader,
-                progress_desc,
-                progress_total,
-                progress_unit,
-                show_progress
-            ))
-        else:
-            outputs = self._process_unsorted(
-                loader,
-                progress_desc,
-                progress_total,
-                progress_unit,
-                show_progress
-            )
-
-        if output_file is not None:
-            output_file_is_str = isinstance(output_file, str)
-            if output_file_is_str:
-                output_dir = os.path.dirname(output_file)
-                if output_dir != "":
-                    os.makedirs(output_dir, exist_ok=True)
-                output_file = open(output_file, "w", encoding="utf8")
-
-            for output in outputs:
-                text = output.text
-                if format == "jsonl":
-                    text = json.dumps(text)
-                elif format == "lines" and "\n" in text:
-                    raise ValueError(
-                        "output contains newline, "
-                        "lines format is not supported in this case"
-                    )
-                output_file.write(text + "\n")
-
-            if output_file_is_str:
-                output_file.close()
-
-        else:
-            return (output.text for output in outputs)

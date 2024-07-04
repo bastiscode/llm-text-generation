@@ -1,19 +1,16 @@
 experiment:
-  name: env(LLAMA3_MODEL:llama-3-8b)
-input_tokenizer:
-  tokenize:
-    type: huggingface
-    path: relpath(llama-3/tokenizer.json)
-  special:
-    tokens:
-      - <|begin_of_text|>
-    pad: <|end_of_text|>
-  eos_token: <|end_of_text|>
+  name: llama-3-8b
+
 model:
-  name: env(LLAMA3_MODEL:llama-3-8b)
+  model: llama-3-8b
   type: pretrained_decoder
   device_map: auto
+
 seed: 22
-train:
-  data:
-    max_length: 8192
+
+inference:
+  max_length: 8192
+  window:
+    type: full
+  tokenizer: file(../../configs/tokenizers/llama-3.yaml)
+  eos_token: <|end_of_text|>

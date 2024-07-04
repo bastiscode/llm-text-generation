@@ -1,18 +1,15 @@
 experiment:
-  name: env(LLAMA2_MODEL:llama-2-7b)
-input_tokenizer:
-  tokenize:
-    type: huggingface
-    path: relpath(llama-2/tokenizer.json)
-  special:
-    tokens:
-      - <unk>
-    pad: <unk>
-  eos_token: </s>
+  name: env(MODEL:llama-2-7b)
+
 model:
-  name: env(LLAMA2_MODEL:llama-2-7b)
+  model: env(MODEL:llama-2-7b)
   type: pretrained_decoder
+
 seed: 22
-train:
-  data:
-    max_length: 4096
+
+inference:
+  max_length: 4096
+  window:
+    type: full
+  tokenizer: file(../../configs/tokenizers/llama-2.yaml)
+  eos_token: </s>

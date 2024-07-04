@@ -1,7 +1,7 @@
 [project]
 name = "llm_text_generation"
 version = "0.1.0"
-description = "Finetune and run large language models."
+description = "Run large language models."
 authors = [
     { name = "Sebastian Walter", email = "swalter@cs.uni-freiburg.de" }
 ]
@@ -20,12 +20,9 @@ classifiers = [
 ]
 
 dependencies = [
-    "dtpu>=0.5.1",
-    "transformers>=4.37.0",
-    "peft>=0.8.0",
-    "bitsandbytes>=0.42.0",
-    "tqdm>=4.60.0",
-    "flask-sock>=0.7.0",
+    "dtpu==0.6.0",
+    "transformers>=4.42.0",
+    "flask_socketio>=5.3",
     "braceexpand>=0.1.7"
 ]
 

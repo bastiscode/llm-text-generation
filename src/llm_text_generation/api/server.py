@@ -3,7 +3,7 @@ import json as J
 from typing import Dict, Any
 
 from flask import Response, jsonify, request, abort
-from flask_sock import Sock
+from flask_socketio import SocketIO, send, disconnect
 
 from text_utils.api.server import TextProcessingServer, Error
 
@@ -27,12 +27,8 @@ class TextGenerationServer(TextProcessingServer):
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        self.use_cache = self.config.get("kv_cache", True)
-        self.batch_size = self.config.get("batch_size", 1)
 
-        self.websocket = Sock(self.server)
-
-        @self.server.route(f"{self.base_url}/generate", methods=["POST"])
+        @self.server.route("/generate", methods=["POST"])
         def _generate() -> Response:
             json = request.get_json()
             if json is None:
@@ -68,12 +64,12 @@ class TextGenerationServer(TextProcessingServer):
             top_k = json.get("top_k", 10)
             top_p = json.get("top_p", 0.95)
             temp = json.get("temperature", 1.0)
-            max_length = json.get("max_length", None)
 
             constraint = parse_constraint(json.get("constraint", None))
 
             try:
-                with self.text_processor(json["model"]) as gen:
+                name = json["model"]
+                with self.text_processor(name) as gen:
                     if isinstance(gen, Error):
                         return abort(gen.to_response())
                     assert isinstance(gen, TextGenerator)
@@ -84,14 +80,17 @@ class TextGenerationServer(TextProcessingServer):
                         top_p=top_p,
                         beam_width=beam_width,
                         constraint=constraint,
-                        use_cache=self.use_cache,
-                        max_length=max_length
                     )
                     start = time.perf_counter()
 
+                    idx = self.name_to_idx[name]
+                    model_cfg = self.config["models"][idx]
                     outputs = gen.generate(
                         inputs,
-                        batch_size=self.batch_size,
+                        model_cfg.get(
+                            "batch_size",
+                            self.config.get("batch_size", 1)
+                        ),
                     )
 
                     end = time.perf_counter()
@@ -112,18 +111,29 @@ class TextGenerationServer(TextProcessingServer):
                     )
                 )
 
-        @self.websocket.route(f"{self.base_url}/live")
-        def _generate_live(ws) -> None:
+        self.socketio = SocketIO(
+            self.server,
+            path="live",
+            cors_allowed_origins=self.allow_origin
+        )
+
+        self.connections = set()
+
+        @self.socketio.on("connect")
+        def _connect() -> None:
+            self.connections.add(request.sid)  # type: ignore
+
+        @self.socketio.on("disconnect")
+        def _disconnect() -> None:
+            self.connections.remove(request.sid)  # type: ignore
+
+        @self.socketio.on("message")
+        def _generate_live(data) -> None:
             try:
-                data = ws.receive(timeout=self.timeout)
                 json = J.loads(data)
-                if json is None:
-                    ws.send(J.dumps({
-                        "error": "request body must be json"
-                    }))
-                    return
-                elif "model" not in json:
-                    ws.send(J.dumps({
+
+                if "model" not in json:
+                    send(J.dumps({
                         "error": "missing model in json"
                     }))
                     return
@@ -131,12 +141,12 @@ class TextGenerationServer(TextProcessingServer):
                 text = json.get("text", None)
                 chat = json.get("chat", None)
                 if text is None and chat is None:
-                    ws.send(J.dumps({
+                    send(J.dumps({
                         "error": "missing text or chat in input"
                     }))
                     return
                 elif text is not None and chat is not None:
-                    ws.send(J.dumps({
+                    send(J.dumps({
                         "error": "text and chat are mutually exclusive"
                     }))
                     return
@@ -148,15 +158,14 @@ class TextGenerationServer(TextProcessingServer):
                     ipt = (ipt, constraint)
 
                 sampling_strategy = json.get("sampling_strategy", "greedy")
-                beam_width = json.get("beam_width", None)
+                beam_width = json.get("beam_width", 1)
                 top_k = json.get("top_k", 10)
                 top_p = json.get("top_p", 0.95)
                 temp = json.get("temperature", 1.0)
-                max_length = json.get("max_length", None)
 
                 with self.text_processor(json["model"]) as gen:
                     if isinstance(gen, Error):
-                        ws.send(J.dumps({
+                        send(J.dumps({
                             "error": gen.msg
                         }))
                         return
@@ -169,13 +178,15 @@ class TextGenerationServer(TextProcessingServer):
                         top_p=top_p,
                         beam_width=beam_width,
                         constraint=constraint,
-                        use_cache=self.use_cache,
-                        max_length=max_length
                     )
 
                     start = time.perf_counter()
                     for text in gen.generate_live(ipt):  # type: ignore
-                        ws.send(J.dumps({
+                        if request.sid not in self.connections:
+                            # early explicit disconnect by client
+                            return
+
+                        send(J.dumps({
                             "output": text,
                             "runtime": {
                                 "b": len(text.encode()),
@@ -184,8 +195,19 @@ class TextGenerationServer(TextProcessingServer):
                         }))
 
             except Exception as error:
-                ws.send(J.dumps({
+                send(J.dumps({
                     "error": f"request failed with unexpected error: {error}"
                 }))
+
             finally:
-                ws.close()
+                disconnect()
+
+    def run(self) -> None:
+        self.socketio.run(
+            self.server,
+            "0.0.0.0",
+            self.port,
+            debug=False,
+            use_reloader=False,
+            log_output=False
+        )

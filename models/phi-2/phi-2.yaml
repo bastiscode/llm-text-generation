@@ -1,18 +1,15 @@
 experiment:
   name: phi-2
-input_tokenizer:
-  eos_token: <|endoftext|>
-  special:
-    pad: <|endoftext|>
-    tokens:
-    - <|endoftext|>
-  tokenize:
-    path: relpath(phi-2/tokenizer.json)
-    type: huggingface
+
 model:
-  name: phi-2
+  model: phi-2
   type: pretrained_decoder
+
 seed: 22
-train:
-  data:
-    max_length: 2048
+
+inference:
+  max_length: 2048
+  window:
+    type: full
+  tokenizer: file(../../configs/tokenizers/phi-2.yaml)
+  eos_token: <|endoftext|>

@@ -1,18 +1,15 @@
 experiment:
   name: mistral-7b
-input_tokenizer:
-  tokenize:
-    type: huggingface
-    path: relpath(mistral/tokenizer.json)
-  special:
-    tokens:
-      - <unk>
-    pad: <unk>
-  eos_token: </s>
+
 model:
-  name: mistral-7b
+  model: mistral-7b
   type: pretrained_decoder
+
 seed: 22
-train:
-  data:
-    max_length: 32768
+
+inference:
+  max_length: 32768
+  window:
+    type: full
+  tokenizer: file(../../configs/tokenizers/mistral.yaml)
+  eos_token: </s>

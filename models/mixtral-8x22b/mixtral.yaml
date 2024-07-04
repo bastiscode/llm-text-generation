@@ -1,21 +1,18 @@
 experiment:
   name: mixtral-8x22b
-input_tokenizer:
-  tokenize:
-    type: huggingface
-    path: relpath(mixtral/tokenizer.json)
-  special:
-    tokens:
-      - <unk>
-    pad: <unk>
-  eos_token: </s>
+
 model:
-  name: mixtral-8x22b
+  model: mixtral-8x22b
   type: pretrained_decoder
-  attn_implementation: env(MIXTRAL_ATTN_IMPLEMENTATION:null)
-  load_in_4bit: env(MIXTRAL_4BIT:true)
-  device_map: "auto"
+  attn_implementation: env(ATTN_IMPLEMENTATION:null)
+  load_in_4bit: env(4BIT:true)
+  device_map: auto
+
 seed: 22
-train:
-  data:
-    max_length: 65536
+
+inference:
+  max_length: 65536
+  window:
+    type: full
+  tokenizer: file(../../configs/tokenizers/mistral.yaml)
+  eos_token: </s>
