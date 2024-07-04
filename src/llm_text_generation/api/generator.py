@@ -16,7 +16,6 @@ from text_utils.api.utils import (
 )
 from text_utils.inference import (
     utils as inference_utils,
-    search,
     beam_search
 )
 from text_utils.inference.utils import Beam
@@ -92,9 +91,6 @@ class TextGenerator(TextProcessor):
         # continuations are the postprocessed tokens from the vocab
         # (already sorted by token id)
         self._continuations = self.tokenizer.get_continuations(initial=False)
-        self._initial_continuations = self.tokenizer.get_continuations(
-            initial=True
-        )
         self._sampling_strategy = "greedy"
         self._beam_width = 1
         self._temp = 1.0
