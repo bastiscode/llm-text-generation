@@ -1,2 +1,4 @@
+system: "<|system|>\n{text}<|end|>\n"
 user: "<|user|>\n{text}<|end|>\n"
-end: "<|assistant|>"
+assistant: "<|assistant|>\n{text}<|end|>\n"
+end: "<|assistant|>\n"

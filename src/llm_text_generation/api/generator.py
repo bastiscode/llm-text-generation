@@ -99,6 +99,9 @@ class TextGenerator(TextProcessor):
         self._full_outputs = False
         self._max_length = None
         self._constraint = None
+        self._is_chat = self.cfg["inference"].get(
+            "chat_template", None
+        ) is not None
 
         self.model = self.model.compile(
             **self.cfg["inference"].get("compile", {})
@@ -318,6 +321,7 @@ class TextGenerator(TextProcessor):
             iter([input]),
             self.cfg["inference"]["tokenizer"],
             self.cfg["inference"].get("window", {"type": "full"}),
+            ignore_special_tokens=self._is_chat
         ))
 
         for output in self._live_inference(batch):
@@ -351,18 +355,17 @@ class TextGenerator(TextProcessor):
                 item.data.info
             )
 
-        progress_desc = "Generating text"
-
         yield from (
             output.text for output in self._process(
                 (self._prepare_input(ipt) for ipt in inputs),
                 inference_fn,
                 postprocessing_fn,
-                progress_desc,
+                "Generating text",
                 batch_size,
                 batch_max_tokens,
                 sort,
                 num_threads,
-                show_progress=show_progress
+                show_progress=show_progress,
+                ignore_special_tokens=self._is_chat
             )
         )

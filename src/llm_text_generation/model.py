@@ -18,7 +18,8 @@ from transformers import (
     MistralForCausalLM,
     MixtralForCausalLM,
     PhiForCausalLM,
-    Phi3ForCausalLM
+    Phi3ForCausalLM,
+    Qwen2ForCausalLM
 )
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
@@ -32,6 +33,7 @@ from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
 from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer
 from transformers.models.phi.modeling_phi import PhiDecoderLayer
 from transformers.models.phi3.modeling_phi3 import Phi3DecoderLayer
+from transformers.models.qwen2.modeling_qwen2 import Qwen2DecoderLayer
 from transformers.utils import logging as hf_logging
 from braceexpand import braceexpand
 
@@ -120,6 +122,12 @@ PRETRAINED_DECODERS = [
     "phi-3-small-128k",
     "phi-3-medium-4k",
     "phi-3-medium-128k",
+    "qwen2-1.5b",
+    "qwen2-1.5b-instruct",
+    "qwen2-7b",
+    "qwen2-7b-instruct",
+    "qwen2-72b",
+    "qwen2-72b-instruct",
 ]
 
 
@@ -203,6 +211,18 @@ class PretrainedDecoder(Model):
                     torch_dtype=kwargs.pop("torch_dtype", "auto"),
                     **kwargs
                 )  # type: ignore
+            elif model.startswith("qwen2-"):
+                split = model.split("-")
+                split[0] = split[0].capitalize()
+                split[1] = split[1][:-1] + "B"
+                if len(split) > 2:
+                    split[2] = split[2].capitalize()
+                model = "-".join(split)
+                self.model = Qwen2ForCausalLM.from_pretrained(
+                    f"Qwen/{model}",
+                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
+                    **kwargs
+                )  # type: ignore
             else:
                 self.model = GPT2LMHeadModel.from_pretrained(
                     model,
@@ -220,6 +240,8 @@ class PretrainedDecoder(Model):
             self.layer_cls = PhiDecoderLayer
         elif isinstance(self.model, Phi3ForCausalLM):
             self.layer_cls = Phi3DecoderLayer
+        elif isinstance(self.model, Qwen2ForCausalLM):
+            self.layer_cls = Qwen2DecoderLayer
         elif isinstance(self.model, GPT2LMHeadModel):
             self.layer_cls = GPT2Block
         else:
@@ -346,23 +368,16 @@ class PretrainedDecoder(Model):
         assert device_idx == len(devices)
         # add additional hooks for modules outside the regular
         # transformer layers
-        if isinstance(self.model, LlamaForCausalLM):
-            _register_hook(
-                self.hooks,
-                self.model.model.embed_tokens,
-                devices[0]
+        if isinstance(
+            self.model,
+            (
+                LlamaForCausalLM,
+                Phi3ForCausalLM,
+                Qwen2ForCausalLM,
+                MistralForCausalLM,
+                MixtralForCausalLM
             )
-            _register_hook(
-                self.hooks,
-                self.model.model.norm,
-                devices[-1]
-            )
-            _register_hook(
-                self.hooks,
-                self.model.lm_head,
-                devices[-1]
-            )
-        elif isinstance(self.model, (MistralForCausalLM, MixtralForCausalLM)):
+        ):
             _register_hook(
                 self.hooks,
                 self.model.model.embed_tokens,
@@ -386,23 +401,7 @@ class PretrainedDecoder(Model):
             )
             _register_hook(
                 self.hooks,
-                self.model.model.final_layer_norm,
-                devices[-1]
-            )
-            _register_hook(
-                self.hooks,
-                self.model.lm_head,
-                devices[-1]
-            )
-        elif isinstance(self.model, Phi3ForCausalLM):
-            _register_hook(
-                self.hooks,
-                self.model.model.embed_tokens,
-                devices[0]
-            )
-            _register_hook(
-                self.hooks,
-                self.model.model.norm,
+                self.model.model.final_layernorm,
                 devices[-1]
             )
             _register_hook(

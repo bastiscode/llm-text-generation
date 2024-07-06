@@ -1,2 +1,3 @@
-user: "[INST] {text} [/INST]"
-assistant: "{text}</s>"
+start: "<s>"
+user: "[INST] {text}[/INST]"
+assistant: " {text}</s>"
