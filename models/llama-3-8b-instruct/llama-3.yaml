@@ -4,7 +4,6 @@ experiment:
 model:
   model: llama-3-8b-instruct
   type: pretrained_decoder
-  device_map: auto
 
 seed: 22
 
