@@ -1,4 +1,5 @@
-system: "<|system|>\n{text}<|end|>\n"
-user: "<|user|>\n{text}<|end|>\n"
-assistant: "<|assistant|>\n{text}<|end|>\n"
+roles:
+  system: "<|system|>\n{text}<|end|>\n"
+  user: "<|user|>\n{text}<|end|>\n"
+  assistant: "<|assistant|>\n{text}<|end|>\n"
 end: "<|assistant|>\n"

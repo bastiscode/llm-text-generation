@@ -1,7 +1,3 @@
-from io import TextIOWrapper
-import os
-import json
-import sys
 from typing import Any, Iterable, Iterator
 
 import torch
@@ -137,10 +133,13 @@ class TextGenerator(TextProcessor):
         # add messages
         for message in ipt:
             role = message["role"]
-            if role not in template:
+            if role not in template["roles"]:
                 text += message["text"]
             else:
-                msg = template[role].replace("{text}", message["text"])
+                msg = template["roles"][role].replace(
+                    "{text}",
+                    message["text"]
+                )
                 text += msg
 
         # add end
