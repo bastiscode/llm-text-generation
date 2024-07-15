@@ -123,7 +123,10 @@ class TextGenerator(TextProcessor):
         if isinstance(ipt, str):
             ipt = [{"role": "user", "text": ipt}]
 
-        template = self.cfg["inference"].get("chat_template", {})
+        template = self.cfg["inference"].get(
+            "chat_template",
+            {"roles": {}}
+        )
 
         assert len(ipt) > 0, "expected non-empty chat"
         assert ipt[-1]["role"] == "user", "expected user to be last"
@@ -263,6 +266,7 @@ class TextGenerator(TextProcessor):
             logit_fns=logit_fns,
             kwargs_update_fn=_kwargs_update_fn,
             return_full=self._full_outputs,
+            return_incomplete=True,
             yield_intermediate=True
         ):
             yield [beams[0] for beams in output]
