@@ -4,6 +4,7 @@ experiment:
 model:
   model: llama-3-8b
   type: pretrained_decoder
+  attn_implementation: env(ATTN_IMPLEMENTATION:flash_attention_2)
 
 seed: 22
 
