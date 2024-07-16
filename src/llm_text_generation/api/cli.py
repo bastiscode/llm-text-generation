@@ -1,5 +1,4 @@
-from io import TextIOWrapper
-from typing import Iterator, Iterable
+from typing import Iterator
 import random
 import json
 
@@ -51,25 +50,24 @@ class TextGenerationCli(TextProcessingCli):
         )
         return gen
 
-    def format_output(self, output: str) -> Iterable[str]:
-        if self.args.output_format == "jsonl":
-            return [json.dumps(output)]
-        return [output]
-
     def process_iter(
         self,
         processor: TextProcessor,
         iter: Iterator[str]
     ) -> Iterator[str]:
         assert isinstance(processor, TextGenerator)
-        yield from processor.generate(
-            (json.loads(item) if self.args.input_format == "jsonl"
-             else item for item in iter),
-            batch_size=self.args.batch_size,
-            batch_max_tokens=self.args.batch_max_tokens,
-            sort=not self.args.unsorted,
-            num_threads=self.args.num_threads,
-            show_progress=self.args.progress,
+        jsonl_out = self.args.output_format == "jsonl"
+        jsonl_in = self.args.input_format == "jsonl"
+        yield from (
+            json.dumps(output) if jsonl_out else output
+            for output in processor.generate(
+                (json.loads(item) if jsonl_in else item for item in iter),
+                batch_size=self.args.batch_size,
+                batch_max_tokens=self.args.batch_max_tokens,
+                sort=not self.args.unsorted,
+                num_threads=self.args.num_threads,
+                show_progress=self.args.progress,
+            )
         )
 
 
