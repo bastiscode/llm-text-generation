@@ -211,7 +211,7 @@ class TextGenerator(TextProcessor):
                 self._eos_token_id
             ))
 
-            def _update_beam(
+            def update_beam(
                 beam: Beam,
                 token_id: int,
                 log_p: float
@@ -228,7 +228,7 @@ class TextGenerator(TextProcessor):
                 beam.info["constraint"] = beam_const
                 return beam
 
-            candidate_fn = _update_beam
+            candidate_fn = update_beam
         else:
             candidate_fn = inference_utils.default_beam_candidate_fn()
 
