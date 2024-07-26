@@ -154,7 +154,7 @@ class TextGenerator(TextProcessor):
     def _live_inference(
         self,
         batch: data.InferenceBatch,
-    ) -> Iterator[list[Beam]]:
+    ) -> Iterator[list[str]]:
         # decode fn gets in token ids and additional kwargs,
         # and return logits over next tokens and additional info
         def _decode_fn(
@@ -185,8 +185,10 @@ class TextGenerator(TextProcessor):
 
         logit_fns = []
         initial_beams = []
+        initial_lengths = []
         for token_ids, info in zip(batch.token_ids(), batch.infos()):
             beam = Beam(token_ids, [0.0] * len(token_ids))
+            initial_lengths.append(0 if self._full_outputs else len(token_ids))
 
             if "constraint" in info:
                 beam.info["constraint"] = self._get_constraint(
@@ -265,11 +267,13 @@ class TextGenerator(TextProcessor):
             candidate_fn=candidate_fn,
             logit_fns=logit_fns,
             kwargs_update_fn=_kwargs_update_fn,
-            return_full=self._full_outputs,
             return_incomplete=True,
             yield_intermediate=True
         ):
-            yield [beams[0] for beams in output]
+            yield [
+                self.tokenizer.de_tokenize(beams[0].token_ids[length:])
+                for beams, length in zip(output, initial_lengths)
+            ]
 
     def _get_constraint(
         self,
@@ -327,8 +331,7 @@ class TextGenerator(TextProcessor):
             ignore_special_tokens=self._is_chat
         ))
 
-        for output in self._live_inference(batch):
-            yield self.tokenizer.de_tokenize(output[0].token_ids)
+        yield from (outputs[0] for outputs in self._live_inference(batch))
 
     def generate(
         self,
@@ -341,34 +344,26 @@ class TextGenerator(TextProcessor):
     ) -> Iterator[str]:
         def inference_fn(
             batch: data.InferenceBatch
-        ) -> list[Beam]:
+        ) -> list[str]:
             *_, last = self._live_inference(batch)
             return last
 
         def postprocessing_fn(
             items: list[data.InferenceItem],
-            outputs: list[Beam]
-        ) -> data.InferenceData:
+            outputs: list[str]
+        ) -> str:
             assert len(items) == 1 and len(outputs) == 1
-            output = outputs[0]
-            item = items[0]
+            return outputs[0]
 
-            return data.InferenceData(
-                self.tokenizer.de_tokenize(output.token_ids),
-                item.data.info
-            )
-
-        yield from (
-            output.text for output in self._process(
-                (self._prepare_input(ipt) for ipt in inputs),
-                inference_fn,
-                postprocessing_fn,
-                "Generating text",
-                batch_size,
-                batch_max_tokens,
-                sort,
-                num_threads,
-                show_progress=show_progress,
-                ignore_special_tokens=self._is_chat
-            )
+        yield from self._process(
+            (self._prepare_input(ipt) for ipt in inputs),
+            inference_fn,
+            postprocessing_fn,
+            "Generating text",
+            batch_size,
+            batch_max_tokens,
+            sort,
+            num_threads,
+            show_progress=show_progress,
+            ignore_special_tokens=self._is_chat
         )
