@@ -118,14 +118,14 @@ class TextGenerator(TextProcessor):
         info = {}
         if isinstance(ipt, tuple):
             ipt, constraint = ipt
-            info["constraint"] = constraint
+            info["const"] = constraint
 
         if isinstance(ipt, str):
             ipt = [{"role": "user", "text": ipt}]
 
         template = self.cfg["inference"].get(
             "chat_template",
-            {"roles": {}}
+            {"roles": {"user": "{text}"}}
         )
 
         assert len(ipt) > 0, "expected non-empty chat"
@@ -135,15 +135,17 @@ class TextGenerator(TextProcessor):
 
         # add messages
         for message in ipt:
-            role = message["role"]
-            if role not in template["roles"]:
-                text += message["text"]
-            else:
-                msg = template["roles"][role].replace(
-                    "{text}",
-                    message["text"]
-                )
-                text += msg
+            assert message["role"] in template["roles"], \
+                f"role {message['role']} not in template roles"
+
+            role_template = template["roles"][message["role"]]
+            assert "{text}" in role_template, \
+                f"role template {role_template} does not contain {{text}}"
+            msg = role_template.replace(
+                "{text}",
+                message["text"]
+            )
+            text += msg
 
         # add end
         text += template.get("end", "")
@@ -183,56 +185,41 @@ class TextGenerator(TextProcessor):
                 for cache in info["kv_cache"]
             )
 
-        logit_fns = []
         initial_beams = []
-        initial_lengths = []
         for token_ids, info in zip(batch.token_ids(), batch.infos()):
-            beam = Beam(token_ids, [0.0] * len(token_ids))
-            initial_lengths.append(0 if self._full_outputs else len(token_ids))
 
+            beam_info = {}
             if "constraint" in info:
-                beam.info["constraint"] = self._get_constraint(
-                    info["constraint"]
-                )
+                beam_info["const"] = self._get_constraint(info["constraint"])
             elif self._constraint is not None:
                 constraint = self._constraint.clone()
                 constraint.reset()
-                beam.info["constraint"] = constraint
+                beam_info["const"] = constraint
 
+            beam = Beam(token_ids, info=beam_info)
             initial_beams.append(beam)
 
-        # add constrain logit fn if any of the beams have a constraint
-        if any(
-            "constraint" in beam.info
-            for beam in initial_beams
-        ):
-            logit_fns.append(inference_utils.constraint_logit_fn(
-                lambda beam: beam.info.get(
-                    "constraint", None
-                ) if isinstance(beam, Beam) else None,
+        logit_fns = [
+            inference_utils.constraint_logit_fn(
+                lambda beam: beam.info.get("const", None),
                 self._eos_token_id
-            ))
+            )
+        ]
 
-            def update_beam(
-                beam: Beam,
-                token_id: int,
-                log_p: float
-            ) -> Beam | None:
-                beam = Beam.from_beam(beam, token_id, log_p)
-                beam_const = beam.info.get("constraint", None)
-                if token_id == self._eos_token_id or beam_const is None:
-                    return beam
-                elif beam_const.is_invalid():
-                    return None
+        def stop_fn(beam: Beam) -> bool:
+            return beam.token_ids[-1] == self._eos_token_id
 
-                beam_const = beam_const.clone()
-                beam_const.next(token_id)
-                beam.info["constraint"] = beam_const
+        def update_fn(beam: Beam) -> Beam | None:
+            const = beam.info.get("const", None)
+            if const is None:
                 return beam
+            elif const.is_invalid():
+                return None
 
-            candidate_fn = update_beam
-        else:
-            candidate_fn = inference_utils.default_beam_candidate_fn()
+            const = const.clone()
+            const.next(beam.token_ids[-1])
+            beam.info["const"] = const
+            return beam
 
         if self._sampling_strategy == "greedy":
             sample_fn = inference_utils.greedy()
@@ -250,29 +237,30 @@ class TextGenerator(TextProcessor):
                 self._temp
             ))
 
-        def beam_stop_fn(beam: Beam) -> bool:
-            return beam.token_ids[-1] == self._eos_token_id
-
         for output in beam_search(
             decode_fn=_decode_fn,
             initial=initial_beams,
             pad_token_id=self.tokenizer.pad_token_id(),
             max_length=self.max_length,
-            stop_fn=beam_stop_fn,
+            stop_fn=stop_fn,
             device=self.devices[0],
             normalize_by_length=True,
             alpha=1.0,
             beam_width=self._beam_width,
             sample_fn=sample_fn,
-            candidate_fn=candidate_fn,
+            update_fn=update_fn,
             logit_fns=logit_fns,
             kwargs_update_fn=_kwargs_update_fn,
             return_incomplete=True,
             yield_intermediate=True
         ):
             yield [
-                self.tokenizer.de_tokenize(beams[0].token_ids[length:])
-                for beams, length in zip(output, initial_lengths)
+                self.tokenizer.de_tokenize(
+                    beams[0].token_ids
+                    if self._full_outputs
+                    else beams[0].decoded_token_ids
+                )
+                for beams in output
             ]
 
     def _get_constraint(
