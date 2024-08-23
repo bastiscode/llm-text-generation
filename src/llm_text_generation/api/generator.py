@@ -189,8 +189,8 @@ class TextGenerator(TextProcessor):
         for token_ids, info in zip(batch.token_ids(), batch.infos()):
 
             beam_info = {}
-            if "constraint" in info:
-                beam_info["const"] = self._get_constraint(info["constraint"])
+            if "const" in info:
+                beam_info["const"] = self._get_constraint(info["const"])
             elif self._constraint is not None:
                 constraint = self._constraint.clone()
                 constraint.reset()
