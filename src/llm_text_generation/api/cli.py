@@ -45,6 +45,7 @@ class TextGenerationCli(TextProcessingCli):
             beam_width=self.args.beam_width,
             constraint=constraint,
             max_length=self.args.max_length,
+            max_new_tokens=self.args.max_new_tokens,
             use_cache=self.args.kv_cache,
             full_outputs=self.args.full_outputs
         )
@@ -117,6 +118,12 @@ def main():
         type=int,
         default=None,
         help="Maximum supported input/output length in tokens"
+    )
+    parser.add_argument(
+        "--max-new-tokens",
+        type=int,
+        default=None,
+        help="Maximum number of new tokens to generate"
     )
     constraints = parser.add_mutually_exclusive_group()
     constraints.add_argument(

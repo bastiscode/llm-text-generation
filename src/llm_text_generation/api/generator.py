@@ -94,6 +94,7 @@ class TextGenerator(TextProcessor):
         self._use_cache = False
         self._full_outputs = False
         self._max_length = None
+        self._max_new_tokens = None
         self._constraint = None
         self._is_chat = self.cfg["inference"].get(
             "chat_template", None
@@ -251,6 +252,7 @@ class TextGenerator(TextProcessor):
             update_fn=update_fn,
             logit_fns=logit_fns,
             kwargs_update_fn=_kwargs_update_fn,
+            max_new_tokens=self._max_new_tokens,
             return_incomplete=True,
             yield_intermediate=True
         ):
@@ -290,6 +292,7 @@ class TextGenerator(TextProcessor):
         beam_width: int = 1,
         constraint: Const | None = None,
         max_length: int | None = None,
+        max_new_tokens: int | None = None,
         use_cache: bool = False,
         full_outputs: bool = False
     ) -> None:
@@ -304,6 +307,7 @@ class TextGenerator(TextProcessor):
         else:
             self._constraint = None
         self._max_length = max_length
+        self._max_new_tokens = max_new_tokens
         self._use_cache = use_cache
         self._full_outputs = full_outputs
 
