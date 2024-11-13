@@ -1,0 +1,2 @@
+type: pretrained_decoder
+model: env(QWEN25_MODEL:qwen2.5-1.5b)

@@ -1,0 +1,5 @@
+start: "<bos>"
+roles:
+  user: "<start_of_turn>user\n{text}<end_of_turn>\n"
+  assistant: "<start_of_turn>model\n{text}<end_of_turn>\n"
+end: "<start_of_turn>model\n"

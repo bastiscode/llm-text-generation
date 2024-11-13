@@ -1,0 +1,2 @@
+type: pretrained_decoder
+model: env(PHI3_MODEL:phi-3-mini-4k)

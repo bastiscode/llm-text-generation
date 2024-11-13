@@ -1,0 +1,5 @@
+start: env(BOS_TOKEN:"")
+roles:
+  system: "{text}"
+  user: "{text}"
+  assistant: "{text}"

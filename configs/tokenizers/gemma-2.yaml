@@ -1,0 +1,9 @@
+tokenize:
+  type: huggingface
+  path: relpath(gemma-2/tokenizer.json)
+special:
+  tokens:
+    - <pad>
+    - <unk>
+  pad: <pad>
+  unk: <unk>

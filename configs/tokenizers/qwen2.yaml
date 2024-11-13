@@ -1,7 +1,0 @@
-tokenize:
-  type: huggingface
-  path: relpath(qwen2/tokenizer.json)
-special:
-  tokens:
-    - <|endoftext|>
-  pad: <|endoftext|>

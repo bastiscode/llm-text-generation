@@ -1,0 +1,2 @@
+type: pretrained_decoder
+model: env(GPT2_MODEL:gpt2)

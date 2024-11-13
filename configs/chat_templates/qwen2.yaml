@@ -1,5 +1,0 @@
-roles:
-  system: "<|im_start|>system\n{text}<|im_end|>\n"
-  user: "<|im_start|>user\n{text}<|im_end|>\n"
-  assistant: "<|im_start|>assistant\n{text}<|im_end|>\n"
-end: "<|im_start|>assistant\n"

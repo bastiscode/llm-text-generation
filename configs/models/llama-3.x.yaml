@@ -1,0 +1,2 @@
+type: pretrained_decoder
+model: env(LLAMA3X_MODEL:llama-3.2-3b)

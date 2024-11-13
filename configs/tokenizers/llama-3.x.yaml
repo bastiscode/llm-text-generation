@@ -1,0 +1,7 @@
+tokenize:
+  type: huggingface
+  path: relpath(llama-3.x/tokenizer.json)
+special:
+  tokens:
+    - <|end_of_text|>
+  pad: <|end_of_text|>
