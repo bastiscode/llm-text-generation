@@ -10,18 +10,11 @@ from text_utils.api.utils import (
     device_info,
     get_devices,
 )
-from text_utils.inference import (
-    utils as inference_utils,
-    beam_search
-)
+from text_utils.inference import utils as inference_utils, beam_search
 from text_utils.inference.utils import Beam
 from text_utils.constraints import Constraint
 
-from llm_text_generation.model import (
-    Model,
-    PretrainedDecoder,
-    model_from_config
-)
+from llm_text_generation.model import Model, PretrainedDecoder, model_from_config
 
 _BASE_URL = ""
 _NAME_TO_ZIP = {}
@@ -46,27 +39,15 @@ class TextGenerator(TextProcessor):
         return self.cfg["experiment"]["name"]
 
     @classmethod
-    def _model_from_config(
-        cls,
-        cfg: dict[str, Any],
-        device: Device
-    ) -> nn.Module:
+    def _model_from_config(cls, cfg: dict[str, Any], device: Device) -> nn.Module:
         return model_from_config(cfg["model"])
 
     @property
     def max_length(self) -> int:
         cfg_max_length = self.cfg["inference"].get("max_length", 512)
-        return min(
-            self._max_length or cfg_max_length,
-            cfg_max_length
-        )
+        return min(self._max_length or cfg_max_length, cfg_max_length)
 
-    def __init__(
-        self,
-        model: Model,
-        cfg: dict[str, Any],
-        device: Device
-    ) -> None:
+    def __init__(self, model: Model, cfg: dict[str, Any], device: Device) -> None:
         super().__init__(model, cfg, device)
         assert isinstance(model, PretrainedDecoder)
         self.logger.debug(f"got model config:\n{self.cfg['model']}")
@@ -80,9 +61,7 @@ class TextGenerator(TextProcessor):
 
         # some options for inference
         self._eos_token = self.cfg["inference"]["eos_token"]
-        self._eos_token_id = self.tokenizer.token_to_id(
-            self._eos_token
-        )
+        self._eos_token_id = self.tokenizer.token_to_id(self._eos_token)
 
         # continuations are the postprocessed tokens from the vocab
         # (already sorted by token id)
@@ -96,13 +75,9 @@ class TextGenerator(TextProcessor):
         self._max_length = None
         self._max_new_tokens = None
         self._constraint = None
-        self._is_chat = self.cfg["inference"].get(
-            "chat_template", None
-        ) is not None
+        self._is_chat = self.cfg["inference"].get("chat_template", None) is not None
 
-        self.model = self.model.compile(
-            **self.cfg["inference"].get("compile", {})
-        )
+        self.model = self.model.compile(**self.cfg["inference"].get("compile", {}))
 
     def to(self, device: Device) -> "TextGenerator":
         self.devices = get_devices(device)
@@ -115,7 +90,7 @@ class TextGenerator(TextProcessor):
     def _prepare_input(
         self,
         ipt: str | Chat | tuple[str | Chat, Const],
-    ) -> data.InferenceData:
+    ) -> tuple[str, dict[str, Any]]:
         info = {}
         if isinstance(ipt, tuple):
             ipt, constraint = ipt
@@ -125,8 +100,7 @@ class TextGenerator(TextProcessor):
             ipt = [{"role": "user", "text": ipt}]
 
         template = self.cfg["inference"].get(
-            "chat_template",
-            {"roles": {"user": "{text}"}}
+            "chat_template", {"roles": {"user": "{text}"}}
         )
 
         assert len(ipt) > 0, "expected non-empty chat"
@@ -136,62 +110,54 @@ class TextGenerator(TextProcessor):
 
         # add messages
         for message in ipt:
-            assert message["role"] in template["roles"], \
-                f"role {message['role']} not in template roles"
+            assert (
+                message["role"] in template["roles"]
+            ), f"role {message['role']} not in template roles"
 
             role_template = template["roles"][message["role"]]
-            assert "{text}" in role_template, \
-                f"role template {role_template} does not contain {{text}}"
-            msg = role_template.replace(
-                "{text}",
-                message["text"]
-            )
+            assert (
+                "{text}" in role_template
+            ), f"role template {role_template} does not contain {{text}}"
+            msg = role_template.replace("{text}", message["text"])
             text += msg
 
         # add end
         text += template.get("end", "")
-
-        return data.InferenceData(text, info)
+        return text, info
 
     @torch.inference_mode()
     def _live_inference(
-        self,
-        batch: data.InferenceBatch,
+        self, batch: data.InferenceBatch, infos: list[dict]
     ) -> Iterator[list[str]]:
         # decode fn gets in token ids and additional kwargs,
         # and return logits over next tokens and additional info
         def _decode_fn(
-            token_ids: torch.Tensor,
-            **kwargs: Any
+            token_ids: torch.Tensor, **kwargs: Any
         ) -> tuple[torch.Tensor, dict[str, Any]]:
             assert isinstance(self.model, PretrainedDecoder)
             dec, cache = self.model.decode(
                 token_ids,
                 kwargs["lengths"],
                 kwargs.get("kv_cache", None),
-                self._use_cache
+                self._use_cache,
             )
             return dec, {"kv_cache": cache}
 
         def _kwargs_update_fn(
-            kwargs: dict[str, Any],
-            info: dict[str, Any],
-            mask: torch.Tensor
+            kwargs: dict[str, Any], info: dict[str, Any], mask: torch.Tensor
         ) -> None:
             kv_cache = info.get("kv_cache", None)
             if kv_cache is None:
                 return
             kwargs["kv_cache"] = tuple(
-                tuple(c[mask.to(c.device)] for c in cache)
-                for cache in info["kv_cache"]
+                tuple(c[mask.to(c.device)] for c in cache) for cache in info["kv_cache"]
             )
 
         initial_beams = []
-        for token_ids, info in zip(batch.token_ids(), batch.infos()):
-
+        for token_ids, index in zip(batch.token_ids(), batch.indices()):
             beam_info = {}
-            if "const" in info:
-                beam_info["const"] = self._get_constraint(info["const"])
+            if "const" in infos[index]:
+                beam_info["const"] = self._get_constraint(infos[index]["const"])
             elif self._constraint is not None:
                 constraint = self._constraint.clone()
                 constraint.reset()
@@ -202,8 +168,7 @@ class TextGenerator(TextProcessor):
 
         logit_fns = [
             inference_utils.constraint_logit_fn(
-                lambda beam: beam.info.get("const", None),
-                self._eos_token_id
+                lambda beam: beam.info.get("const", None), self._eos_token_id
             )
         ]
 
@@ -225,8 +190,9 @@ class TextGenerator(TextProcessor):
         if self._sampling_strategy == "greedy":
             sample_fn = inference_utils.greedy()
         elif self._sampling_strategy == "top_k":
-            assert self._top_k >= self._beam_width, \
-                "top k must be greater than or equal to beam width"
+            assert (
+                self._top_k >= self._beam_width
+            ), "top k must be greater than or equal to beam width"
             logit_fns.append(inference_utils.top_k_masking(self._top_k))
             sample_fn = inference_utils.sample()
         else:
@@ -234,9 +200,7 @@ class TextGenerator(TextProcessor):
             sample_fn = inference_utils.sample()
 
         if self._sampling_strategy != "greedy" and self._temp != 1.0:
-            logit_fns.append(inference_utils.temperature_scaling(
-                self._temp
-            ))
+            logit_fns.append(inference_utils.temperature_scaling(self._temp))
 
         for output in beam_search(
             decode_fn=_decode_fn,
@@ -254,7 +218,7 @@ class TextGenerator(TextProcessor):
             kwargs_update_fn=_kwargs_update_fn,
             max_new_tokens=self._max_new_tokens,
             return_incomplete=True,
-            yield_intermediate=True
+            yield_intermediate=True,
         ):
             yield [
                 self.tokenizer.de_tokenize(
@@ -265,23 +229,12 @@ class TextGenerator(TextProcessor):
                 for beams in output
             ]
 
-    def _get_constraint(
-        self,
-        constraint: Const
-    ) -> Constraint:
+    def _get_constraint(self, constraint: Const) -> Constraint:
         if isinstance(constraint, str):
-            return grammar.RegexConstraint(
-                constraint,
-                self._continuations
-            )
+            return grammar.RegexConstraint(constraint, self._continuations)
         else:
             gram, lexer, exact = constraint
-            return grammar.LR1Constraint(
-                gram,
-                lexer,
-                self._continuations,
-                exact
-            )
+            return grammar.LR1Constraint(gram, lexer, self._continuations, exact)
 
     def set_inference_options(
         self,
@@ -294,7 +247,7 @@ class TextGenerator(TextProcessor):
         max_length: int | None = None,
         max_new_tokens: int | None = None,
         use_cache: bool = False,
-        full_outputs: bool = False
+        full_outputs: bool = False,
     ) -> None:
         assert sampling_strategy in ["greedy", "top_k", "top_p"]
         self._sampling_strategy = sampling_strategy
@@ -315,15 +268,17 @@ class TextGenerator(TextProcessor):
         self,
         ipt: str | Chat | tuple[str | Chat, Const],
     ) -> Iterator[str]:
-        input = self._prepare_input(ipt)
-        batch = next(data.InferenceLoader.from_iterator(
-            iter([input]),
-            self.cfg["inference"]["tokenizer"],
-            self.cfg["inference"].get("window", {"type": "full"}),
-            ignore_special_tokens=self._is_chat
-        ))
+        input, info = self._prepare_input(ipt)
+        batch = next(
+            data.InferenceLoader.from_iterator(
+                iter([input]),
+                self.cfg["inference"]["tokenizer"],
+                self.cfg["inference"].get("window", {"type": "full"}),
+                ignore_special_tokens=self._is_chat,
+            )
+        )
 
-        yield from (outputs[0] for outputs in self._live_inference(batch))
+        yield from (outputs[0] for outputs in self._live_inference(batch, [info]))
 
     def generate(
         self,
@@ -334,21 +289,20 @@ class TextGenerator(TextProcessor):
         num_threads: int | None = None,
         show_progress: bool = False,
     ) -> Iterator[str]:
-        def inference_fn(
-            batch: data.InferenceBatch
-        ) -> list[str]:
-            *_, last = self._live_inference(batch)
+        inputs, infos = zip(*(self._prepare_input(ipt) for ipt in inputs))
+
+        def inference_fn(batch: data.InferenceBatch) -> list[str]:
+            *_, last = self._live_inference(batch, infos)
             return last
 
         def postprocessing_fn(
-            items: list[data.InferenceItem],
-            outputs: list[str]
+            items: list[data.InferenceItem], outputs: list[str]
         ) -> str:
             assert len(items) == 1 and len(outputs) == 1
             return outputs[0]
 
         yield from self._process(
-            (self._prepare_input(ipt) for ipt in inputs),
+            iter(inputs),
             inference_fn,
             postprocessing_fn,
             "Generating text",
@@ -357,5 +311,5 @@ class TextGenerator(TextProcessor):
             sort,
             num_threads,
             show_progress=show_progress,
-            ignore_special_tokens=self._is_chat
+            ignore_special_tokens=self._is_chat,
         )
