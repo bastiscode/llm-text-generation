@@ -1,0 +1,16 @@
+experiment:
+  name: qwen-2.5-instruct
+
+model:
+  model: qwen-2.5-env(QWEN25_VARIANT:7b)-instruct
+  type: pretrained_decoder
+
+seed: 22
+
+inference:
+  max_length: 8192
+  window:
+    type: full
+  tokenizer: file(../../configs/tokenizers/qwen-2.5.yaml)
+  eos_token: <|im_end|>
+  chat_template: file(../../configs/chat_templates/qwen-2.5.yaml)
