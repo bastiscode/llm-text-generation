@@ -2,7 +2,7 @@ experiment:
   name: qwen-2.5
 
 model:
-  model: qwen-2.5-env(QWEN25_VARIANT:7b)
+  model: qwen2.5-env(QWEN25_VARIANT:7b)
   type: pretrained_decoder
 
 seed: 22

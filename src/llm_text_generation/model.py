@@ -416,13 +416,17 @@ class PretrainedDecoder(Model):
             (
                 LlamaForCausalLM,
                 Phi3ForCausalLM,
-                Qwen2ForCausalLM,
                 MistralForCausalLM,
                 MixtralForCausalLM,
                 Gemma2ForCausalLM,
             ),
         ):
             _register_hook(self.hooks, model.model.embed_tokens, devices[0])
+            _register_hook(self.hooks, model.model.norm, devices[-1])
+            _register_hook(self.hooks, model.lm_head, devices[-1])
+        elif isinstance(model, Qwen2ForCausalLM):
+            _register_hook(self.hooks, model.model.embed_tokens, devices[0])
+            _register_hook(self.hooks, model.model.rotary_emb, devices[-1])
             _register_hook(self.hooks, model.model.norm, devices[-1])
             _register_hook(self.hooks, model.lm_head, devices[-1])
         elif isinstance(model, PhiForCausalLM):
@@ -435,6 +439,7 @@ class PretrainedDecoder(Model):
             _register_hook(self.hooks, model.transformer.wpe, devices[0])
             _register_hook(self.hooks, model.transformer.ln_f, devices[-1])
             _register_hook(self.hooks, model.lm_head, devices[-1])
+
         return self
 
 
