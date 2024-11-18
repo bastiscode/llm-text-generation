@@ -138,6 +138,8 @@ PRETRAINED_DECODERS = [
     "qwen2.5-1.5b-instruct",
     "qwen2.5-7b",
     "qwen2.5-7b-instruct",
+    "qwen2.5-14b",
+    "qwen2.5-14b-instruct",
     "gemma-2-2b",
     "gemma-2-2b-it",
     "gemma-2-9b",
