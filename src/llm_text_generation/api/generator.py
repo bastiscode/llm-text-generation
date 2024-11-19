@@ -14,7 +14,13 @@ from text_utils.inference import utils as inference_utils, beam_search
 from text_utils.inference.utils import Beam
 from text_utils.constraints import Constraint
 
-from llm_text_generation.model import Model, PretrainedDecoder, model_from_config
+from llm_text_generation.api.utils import format_chat
+from llm_text_generation.model import (
+    Model,
+    PretrainedDecoder,
+    model_from_config,
+    peft_model_from_config,
+)
 
 _BASE_URL = ""
 _NAME_TO_ZIP = {}
@@ -40,7 +46,12 @@ class TextGenerator(TextProcessor):
 
     @classmethod
     def _model_from_config(cls, cfg: dict[str, Any], device: Device) -> nn.Module:
-        return model_from_config(cfg["model"])
+        model = model_from_config(cfg["model"])
+        assert isinstance(model, PretrainedDecoder)
+        peft = cfg["train"].get("peft", None)
+        if peft is not None:
+            model = peft_model_from_config(model, peft)
+        return model
 
     @property
     def max_length(self) -> int:
@@ -60,7 +71,7 @@ class TextGenerator(TextProcessor):
         )
 
         # some options for inference
-        self._eos_token = self.cfg["inference"]["eos_token"]
+        self._eos_token = self.cfg["inference"]["eos"]
         self._eos_token_id = self.tokenizer.token_to_id(self._eos_token)
 
         # continuations are the postprocessed tokens from the vocab
@@ -96,34 +107,13 @@ class TextGenerator(TextProcessor):
             ipt, constraint = ipt
             info["const"] = constraint
 
-        if isinstance(ipt, str):
-            ipt = [{"role": "user", "text": ipt}]
-
         template = self.cfg["inference"].get(
-            "chat_template", {"roles": {"user": "{text}"}}
+            "chat_template",
+            {"roles": {"system": "{text}", "user": "{text}", "assistant": "{text}"}},
         )
 
-        assert len(ipt) > 0, "expected non-empty chat"
-        assert ipt[-1]["role"] == "user", "expected user to be last"
-        # initialize prompt
-        text = template.get("start", "")
-
-        # add messages
-        for message in ipt:
-            assert (
-                message["role"] in template["roles"]
-            ), f"role {message['role']} not in template roles"
-
-            role_template = template["roles"][message["role"]]
-            assert (
-                "{text}" in role_template
-            ), f"role template {role_template} does not contain {{text}}"
-            msg = role_template.replace("{text}", message["text"])
-            text += msg
-
-        # add end
-        text += template.get("end", "")
-        return text, info
+        prompt = format_chat(ipt, template)
+        return prompt, info
 
     @torch.inference_mode()
     def _live_inference(

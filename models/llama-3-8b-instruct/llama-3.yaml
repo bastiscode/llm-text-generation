@@ -13,5 +13,5 @@ inference:
   window:
     type: full
   tokenizer: file(../../configs/tokenizers/llama-3.yaml)
-  eos_token: <|eot_id|>
+  eos: <|eot_id|>
   chat_template: file(../../configs/chat_templates/llama-3.yaml)

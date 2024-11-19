@@ -16,4 +16,4 @@ inference:
   window:
     type: full
   tokenizer: file(../../configs/tokenizers/mistral.yaml)
-  eos_token: </s>
+  eos: </s>

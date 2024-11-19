@@ -16,5 +16,5 @@ inference:
   window:
     type: full
   tokenizer: file(../../configs/tokenizers/mistral.yaml)
-  eos_token: </s>
+  eos: </s>
   chat_template: file(../../configs/chat_templates/mistral.yaml)

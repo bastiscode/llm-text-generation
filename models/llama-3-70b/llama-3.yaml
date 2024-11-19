@@ -21,4 +21,4 @@ inference:
   window:
     type: full
   tokenizer: file(../../configs/tokenizers/llama-3.yaml)
-  eos_token: <|end_of_text|>
+  eos: <|end_of_text|>

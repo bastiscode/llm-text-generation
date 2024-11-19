@@ -12,5 +12,5 @@ inference:
   window:
     type: full
   tokenizer: file(../../configs/tokenizers/qwen-2.5.yaml)
-  eos_token: <|endoftext|>
+  eos: <|endoftext|>
   chat_template: file(../../configs/chat_templates/qwen-2.5.yaml)

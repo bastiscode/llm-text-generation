@@ -12,5 +12,5 @@ inference:
   window:
     type: full
   tokenizer: file(../../configs/tokenizers/phi-3.yaml)
-  eos_token: <|end|>
+  eos: <|end|>
   chat_template: file(../../configs/chat_templates/phi-3.yaml)

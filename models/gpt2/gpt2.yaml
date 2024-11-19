@@ -12,4 +12,4 @@ inference:
   window:
     type: full
   tokenizer: file(../../configs/tokenizers/gpt2.yaml)
-  eos_token: <|endoftext|>
+  eos: <|endoftext|>
