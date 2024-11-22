@@ -9,7 +9,7 @@ This project requires Python 3.10 or higher.
 #### From PyPI
 
 ```bash
-pip install ad-freiburg-llm-text-generation
+pip install llm-text-generation
 ```
 
 #### From source

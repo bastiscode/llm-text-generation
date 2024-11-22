@@ -23,7 +23,8 @@ dependencies = [
     "dtpu==0.6.0",
     "transformers>=4.42.0",
     "flask_socketio>=5.3",
-    "braceexpand>=0.1.7"
+    "braceexpand>=0.1.7",
+    "grammar-utils>=0.1.0"
 ]
 
 [project.scripts]

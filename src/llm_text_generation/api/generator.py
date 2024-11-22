@@ -3,7 +3,7 @@ from typing import Any, Iterable, Iterator
 import torch
 from torch import nn
 
-from text_utils import data, tokenization, grammar
+from text_utils import data, tokenization
 from text_utils.api.processor import ModelInfo, TextProcessor
 from text_utils.api.utils import (
     Device,
@@ -12,7 +12,7 @@ from text_utils.api.utils import (
 )
 from text_utils.inference import utils as inference_utils, beam_search
 from text_utils.inference.utils import Beam
-from text_utils.constraints import Constraint
+from grammar_utils.constrain import Constraint, RegexConstraint, LR1Constraint
 
 from llm_text_generation.api.utils import format_chat
 from llm_text_generation.model import (
@@ -48,7 +48,7 @@ class TextGenerator(TextProcessor):
     def _model_from_config(cls, cfg: dict[str, Any], device: Device) -> nn.Module:
         model = model_from_config(cfg["model"])
         assert isinstance(model, PretrainedDecoder)
-        peft = cfg["train"].get("peft", None)
+        peft = cfg.get("train", {}).get("peft", None)
         if peft is not None:
             model = peft_model_from_config(model, peft)
         return model
@@ -221,10 +221,10 @@ class TextGenerator(TextProcessor):
 
     def _get_constraint(self, constraint: Const) -> Constraint:
         if isinstance(constraint, str):
-            return grammar.RegexConstraint(constraint, self._continuations)
+            return RegexConstraint(constraint, self._continuations)
         else:
             gram, lexer, exact = constraint
-            return grammar.LR1Constraint(gram, lexer, self._continuations, exact)
+            return LR1Constraint(gram, lexer, self._continuations, exact)
 
     def set_inference_options(
         self,
