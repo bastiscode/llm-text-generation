@@ -1,8 +1,8 @@
 experiment:
-  name: env(MODEL:gpt2)
+  name: env(GPT2_MODEL:gpt2)
 
 model:
-  model: env(MODEL:gpt2)
+  model: env(GPT2_MODEL:gpt2)
   type: pretrained_decoder
 
 seed: 22

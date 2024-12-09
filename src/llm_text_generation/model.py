@@ -1,6 +1,7 @@
 import copy
 import functools
 import os
+import re
 import sys
 import time
 from copy import deepcopy
@@ -20,32 +21,13 @@ from torch.distributed.fsdp.wrap import (
     transformer_auto_wrap_policy,
 )
 from torch.utils.hooks import RemovableHandle
-from transformers import (
-    AutoModelForCausalLM,
-    GPT2LMHeadModel,
-    LlamaForCausalLM,
-    MistralForCausalLM,
-    MixtralForCausalLM,
-    Phi3ForCausalLM,
-    PhiForCausalLM,
-    PreTrainedModel,
-    Qwen2ForCausalLM,
-    Gemma2ForCausalLM,
-)
+from transformers import AutoModelForCausalLM, PreTrainedModel
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithCrossAttentions,
     CausalLMOutputWithPast,
     MoeCausalLMOutputWithPast,
 )
-from transformers.models.gemma2.modeling_gemma2 import Gemma2DecoderLayer
-from transformers.models.gpt2.modeling_gpt2 import GPT2Block
-from transformers.models.llama.modeling_llama import LlamaDecoderLayer
-from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
-from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer
-from transformers.models.phi.modeling_phi import PhiDecoderLayer
-from transformers.models.phi3.modeling_phi3 import Phi3DecoderLayer
-from transformers.models.qwen2.modeling_qwen2 import Qwen2DecoderLayer
 from transformers.utils import logging as hf_logging
 
 hf_logging.disable_progress_bar()
@@ -82,6 +64,9 @@ class Model(nn.Module):
     def get_sharding_policy(self) -> ShardingPolicy | None:
         return None
 
+    def enable_gradient_checkpointing(self) -> None:
+        raise NotImplementedError
+
     def compile(self, **kwargs: Any) -> "Model":
         return self
 
@@ -90,184 +75,108 @@ class Model(nn.Module):
         return self.to(devices[0])
 
 
-PRETRAINED_DECODERS = [
-    "gpt2",
-    "gpt2-medium",
-    "gpt2-large",
-    "gpt2-xl",
-    "llama-2-7b",
-    "llama-2-30b",
-    "llama-2-70b",
-    "llama-2-7b-chat",
-    "llama-2-30b-chat",
-    "llama-2-70b-chat",
-    "llama-3-8b",
-    "llama-3-8b-instruct",
-    "llama-3-70b",
-    "llama-3-70b-instruct",
-    "llama-3.1-8b",
-    "llama-3.1-8b-instruct",
-    "llama-3.1-70b",
-    "llama-3.1-70b-instruct",
-    "llama-3.2-1b",
-    "llama-3.2-1b-instruct",
-    "llama-3.2-3b",
-    "llama-3.2-3b-instruct",
-    "mistral-7b",
-    "mistral-7b-instruct",
-    "mixtral-8x7b",
-    "mixtral-8x7b-instruct",
-    "mixtral-8x22b",
-    "mixtral-8x22b-4bit",
-    "phi-2",
-    "phi-3-mini-4k",
-    "phi-3-mini-128k",
-    "phi-3-small-8k",
-    "phi-3-small-128k",
-    "phi-3-medium-4k",
-    "phi-3-medium-128k",
-    "qwen2-0.5b",
-    "qwen2-0.5b-instruct",
-    "qwen2-1.5b",
-    "qwen2-1.5b-instruct",
-    "qwen2-7b",
-    "qwen2-7b-instruct",
-    "qwen2.5-0.5b",
-    "qwen2.5-0.5b-instruct",
-    "qwen2.5-1.5b",
-    "qwen2.5-1.5b-instruct",
-    "qwen2.5-3b",
-    "qwen2.5-3b-instruct",
-    "qwen2.5-7b",
-    "qwen2.5-7b-instruct",
-    "qwen2.5-14b",
-    "qwen2.5-14b-instruct",
-    "gemma-2-2b",
-    "gemma-2-2b-it",
-    "gemma-2-9b",
-    "gemma-2-9b-it",
-]
+class PretrainedDecoderForClassification(Model):
+    def __init__(
+        self,
+        model: str | PreTrainedModel,
+        output_layer_name: str,
+        classes: list[str],
+        output_position: str | int = "last",
+        **kwargs: Any,
+    ):
+        super().__init__()
+        self.model = PretrainedDecoder(model, **kwargs)
+        # replace final layer with a linear layer
+        assert hasattr(
+            self.model, output_layer_name
+        ), f"output layer {output_layer_name} not found in model"
+        layer = getattr(self.model, output_layer_name)
+        assert isinstance(
+            layer, nn.Linear
+        ), f"output layer {output_layer_name} is not a linear layer"
+        setattr(
+            self.model,
+            output_layer_name,
+            nn.Linear(
+                layer.in_features,
+                len(classes),
+                device=layer.weight.device,
+            ),
+        )
+        self.classes = classes
+        self.idx_to_class = {i: c for i, c in enumerate(classes)}
+        self.output_position = output_position
+
+    def forward(
+        self,
+        token_ids: torch.Tensor,
+        lengths: torch.Tensor | None = None,
+        **_: Any,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        assert lengths is not None, "lengths must be provided"
+        logits, _ = self.model(token_ids)
+        assert torch.all(lengths > 0), "lengths must be greater than 0"
+        if self.output_position == "first":
+            logits = logits[:, 0]
+        elif self.output_position == "last":
+            logits = logits[torch.arange(len(logits)), lengths - 1]
+        elif isinstance(self.output_position, int):
+            assert torch.all(
+                lengths > self.output_position
+            ), "all lengths must be greater than output_position"
+            logits = logits[:, self.output_position]
+        else:
+            raise ValueError(f"unknown output_position {self.output_position}")
+
+        return logits, {}
+
+    def classify(
+        self, token_ids: torch.Tensor, lengths: torch.Tensor, top_k: int = 1
+    ) -> list[list[tuple[str, float]]]:
+        logits, _ = self(token_ids, lengths)
+
+        probs = torch.softmax(logits, dim=1)
+        top = torch.topk(probs, min(top_k, len(self.classes)), dim=1)
+
+        outputs = []
+        for indices, values in zip(top.indices.tolist(), top.values.tolist()):
+            classes_and_probs = [
+                (self.idx_to_class[i], v) for i, v in zip(indices, values)
+            ]
+            outputs.append(classes_and_probs)
+
+        return outputs
+
+    def enable_gradient_checkpointing(self) -> None:
+        self.model.enable_gradient_checkpointing()
+
+    def compile(self, **cfg: Any) -> "PretrainedDecoderForClassification":
+        self.model.compile(**cfg)
+        return self
+
+    def distribute(self, devices: list[torch.device]) -> "Model":
+        self.model = self.model.distribute(devices)
+        return self
 
 
 class PretrainedDecoder(Model):
     model: PreTrainedModel | PeftModel
+    layer_module: str | None = None
+    other_modules: dict[str, int] | None = None
 
-    def __init__(self, model: str | PreTrainedModel, **kwargs: Any):
+    def __init__(self, model: str, **kwargs: Any):
         super().__init__()
         if kwargs.get("device_map") is not None:
             kwargs["device_map"] = brace_expand_keys(kwargs["device_map"])
 
-        if isinstance(model, PreTrainedModel):
-            self.model = model
-        else:
-            assert model in PRETRAINED_DECODERS, f"unknown model {model}"
-            if model.startswith("llama-3"):
-                split = model.split("-")
-                version = split[1]
-                if version == "3":
-                    name = "Meta-Llama"
-                else:
-                    name = "Llama"
-                size = split[2].upper()
-                if len(split) > 3:
-                    # Instruct
-                    variant = "-" + split[3].capitalize()
-                else:
-                    variant = ""
-                self.model = LlamaForCausalLM.from_pretrained(
-                    f"meta-llama/{name}-{version}-{size}{variant}",
-                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
-                    **kwargs,
-                )  # type: ignore
-            elif model.startswith("llama-2"):
-                self.model = LlamaForCausalLM.from_pretrained(
-                    f"meta-llama/{model.capitalize()}-hf",
-                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
-                    **kwargs,
-                )  # type: ignore
-            elif model.startswith("mistral-7b"):
-                if model.endswith("instruct"):
-                    model = "Mistral-7B-Instruct-v0.2"
-                else:
-                    model = "Mistral-7B-v0.1"
-                self.model = MistralForCausalLM.from_pretrained(
-                    f"mistralai/{model}",
-                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
-                    **kwargs,
-                )  # type: ignore
-            elif model.startswith("mixtral-8x7b"):
-                if model.endswith("instruct"):
-                    model = "Mixtral-8x7B-Instruct-v0.1"
-                else:
-                    model = "Mixtral-8x7B-v0.1"
-                self.model = MixtralForCausalLM.from_pretrained(
-                    f"mistralai/{model}",
-                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
-                    **kwargs,
-                )  # type: ignore
-            elif model.startswith("mixtral-8x22b"):
-                if model.endswith("4bit"):
-                    model = "Mixtral-8x22B-v0.1-4bit"
-                else:
-                    model = "Mixtral-8x22B-v0.1"
-                self.model = MixtralForCausalLM.from_pretrained(
-                    f"mistral-community/{model}",
-                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
-                    **kwargs,
-                )  # type: ignore
-            elif model == "phi-2":
-                self.model = PhiForCausalLM.from_pretrained(
-                    "microsoft/phi-2",
-                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
-                    **kwargs,
-                )  # type: ignore
-            elif model.startswith("phi-3"):
-                self.model = Phi3ForCausalLM.from_pretrained(
-                    f"microsoft/{model.capitalize()}-instruct",
-                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
-                    **kwargs,
-                )  # type: ignore
-            elif model.startswith("qwen2"):
-                split = model.split("-")
-                split[0] = split[0].capitalize()
-                split[1] = split[1][:-1] + "B"
-                if len(split) > 2:
-                    split[2] = split[2].capitalize()
-                model = "-".join(split)
-                self.model = Qwen2ForCausalLM.from_pretrained(
-                    f"Qwen/{model}",
-                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
-                    **kwargs,
-                )  # type: ignore
-            elif model.startswith("gemma-2"):
-                self.model = Gemma2ForCausalLM.from_pretrained(
-                    f"google/{model}",
-                    torch_dtype=kwargs.pop("torch_dtype", "auto"),
-                    **kwargs,
-                )
-            else:
-                self.model = GPT2LMHeadModel.from_pretrained(
-                    model, torch_dtype=kwargs.pop("torch_dtype", "auto"), **kwargs
-                )  # type: ignore
-
-        if isinstance(self.model, LlamaForCausalLM):
-            self.layer_cls = LlamaDecoderLayer
-        elif isinstance(self.model, MistralForCausalLM):
-            self.layer_cls = MistralDecoderLayer
-        elif isinstance(self.model, MixtralForCausalLM):
-            self.layer_cls = MixtralDecoderLayer
-        elif isinstance(self.model, PhiForCausalLM):
-            self.layer_cls = PhiDecoderLayer
-        elif isinstance(self.model, Phi3ForCausalLM):
-            self.layer_cls = Phi3DecoderLayer
-        elif isinstance(self.model, Qwen2ForCausalLM):
-            self.layer_cls = Qwen2DecoderLayer
-        elif isinstance(self.model, GPT2LMHeadModel):
-            self.layer_cls = GPT2Block
-        elif isinstance(self.model, Gemma2ForCausalLM):
-            self.layer_cls = Gemma2DecoderLayer
-        else:
-            raise RuntimeError(f"unkown model type {type(self.model)}")
+        # set layer modules and other modules
+        # for distributing model across devices
+        # (or use device_map auto, the default)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model,
+            torch_dtype=kwargs.pop("torch_dtype", "auto"),
+            **kwargs,
+        )
 
     def get_sharding_policy(self) -> ShardingPolicy | None:
         policies = []
@@ -296,6 +205,7 @@ class PretrainedDecoder(Model):
                     lambda_auto_wrap_policy, lambda_fn=lambda m: m in peft_modules
                 )
             )
+
         policies.append(
             functools.partial(
                 transformer_auto_wrap_policy,
@@ -389,14 +299,20 @@ class PretrainedDecoder(Model):
         if len(devices) == 1:
             return self.to(devices[0])
 
+        assert self.layer_module is not None and self.other_modules is not None, (
+            "layer modules not set, specify it or use device_map auto "
+            "when using Huggingface models"
+        )
+
         if isinstance(self.model, PeftModel):
             # unwrap peft model
             model = self.model.base_model.model
         else:
             model = self.model
 
+        layer_pattern = re.compile(self.layer_module)
         # distribute the layers
-        layers = [m for m in model.modules() if isinstance(m, self.layer_cls)]
+        layers = [m for n, m in model.named_modules() if layer_pattern.match(n)]
         assert len(layers) > 0 and len(devices) <= len(
             layers
         ), f"{len(devices)} devices for {len(layers)} layers not supported"
@@ -414,35 +330,12 @@ class PretrainedDecoder(Model):
 
         assert device_idx == len(devices)
         # add additional hooks for modules outside the regular
-        # transformer layers
-        if isinstance(
-            model,
-            (
-                LlamaForCausalLM,
-                Phi3ForCausalLM,
-                MistralForCausalLM,
-                MixtralForCausalLM,
-                Gemma2ForCausalLM,
-            ),
-        ):
-            _register_hook(self.hooks, model.model.embed_tokens, devices[0])
-            _register_hook(self.hooks, model.model.norm, devices[-1])
-            _register_hook(self.hooks, model.lm_head, devices[-1])
-        elif isinstance(model, Qwen2ForCausalLM):
-            _register_hook(self.hooks, model.model.embed_tokens, devices[0])
-            _register_hook(self.hooks, model.model.rotary_emb, devices[-1])
-            _register_hook(self.hooks, model.model.norm, devices[-1])
-            _register_hook(self.hooks, model.lm_head, devices[-1])
-        elif isinstance(model, PhiForCausalLM):
-            _register_hook(self.hooks, model.model.embed_tokens, devices[0])
-            _register_hook(self.hooks, model.model.final_layer_norm, devices[-1])
-            _register_hook(self.hooks, model.lm_head, devices[-1])
-        else:
-            assert isinstance(model, GPT2LMHeadModel)
-            _register_hook(self.hooks, model.transformer.wte, devices[0])
-            _register_hook(self.hooks, model.transformer.wpe, devices[0])
-            _register_hook(self.hooks, model.transformer.ln_f, devices[-1])
-            _register_hook(self.hooks, model.lm_head, devices[-1])
+        # layers
+        for n, m in model.named_modules():
+            for pattern, device_idx in self.other_modules.items():
+                if re.match(pattern, n):
+                    _register_hook(self.hooks, m, devices[device_idx])
+                    break
 
         return self
 
@@ -468,9 +361,8 @@ def model_from_config(
 
     if model_type == "pretrained_decoder":
         return PretrainedDecoder(**cfg)
-    elif model_type == "custom_pretrained_decoder":
-        model = AutoModelForCausalLM.from_pretrained(cfg["path"], torch_dtype="auto")
-        return PretrainedDecoder(model)
+    elif model_type == "pretrained_decoder_for_classification":
+        return PretrainedDecoderForClassification(**cfg)
     else:
         raise ValueError(f"unknown model type {model_type}")
 

@@ -300,6 +300,7 @@ class TextGenerator(TextProcessor):
             batch_max_tokens,
             sort,
             num_threads,
+            progress_total=len(inputs),
             show_progress=show_progress,
             ignore_special_tokens=self._is_chat,
         )

@@ -1,8 +1,8 @@
 experiment:
-  name: qwen-2.5-instruct
+  name: qwen-2.5 (instruct, env(QWEN25_SIZE:7B))
 
 model:
-  model: qwen2.5-env(QWEN25_VARIANT:7b)-instruct
+  model: Qwen/Qwen2.5-env(QWEN25_SIZE:7B)-Instruct
   type: pretrained_decoder
 
 seed: 22
