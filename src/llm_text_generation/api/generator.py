@@ -77,10 +77,11 @@ class TextGenerator(TextProcessor):
         # continuations are the postprocessed tokens from the vocab
         # (already sorted by token id)
         self._continuations = self.tokenizer.get_continuations(initial=False)
-        self._sampling_strategy = "greedy"
+        self._sample = False
         self._beam_width = 1
-        self._temp = 1.0
-        self._top_k = 5
+        self._temp: int | None = None
+        self._top_k: int | None = None
+        self._top_p: int | None = None
         self._use_cache = False
         self._full_outputs = False
         self._max_length = None
@@ -177,20 +178,21 @@ class TextGenerator(TextProcessor):
             beam.info["const"] = const
             return beam
 
-        if self._sampling_strategy == "greedy":
-            sample_fn = inference_utils.greedy()
-        elif self._sampling_strategy == "top_k":
+        sample_fn = (
+            inference_utils.sample() if self._sample else inference_utils.greedy()
+        )
+
+        if self._sample and self._temp is not None:
+            logit_fns.append(inference_utils.temperature_scaling(self._temp))
+
+        if self._sample and self._top_k is not None:
             assert (
                 self._top_k >= self._beam_width
             ), "top k must be greater than or equal to beam width"
             logit_fns.append(inference_utils.top_k_masking(self._top_k))
-            sample_fn = inference_utils.sample()
-        else:
-            logit_fns.append(inference_utils.nucleus_masking(self._top_p))
-            sample_fn = inference_utils.sample()
 
-        if self._sampling_strategy != "greedy" and self._temp != 1.0:
-            logit_fns.append(inference_utils.temperature_scaling(self._temp))
+        if self._sample and self._top_p is not None:
+            logit_fns.append(inference_utils.nucleus_masking(self._top_p))
 
         for output in beam_search(
             decode_fn=_decode_fn,
@@ -199,8 +201,6 @@ class TextGenerator(TextProcessor):
             max_length=self.max_length,
             stop_fn=stop_fn,
             device=self.devices[0],
-            normalize_by_length=True,
-            alpha=1.0,
             beam_width=self._beam_width,
             sample_fn=sample_fn,
             update_fn=update_fn,
@@ -228,10 +228,10 @@ class TextGenerator(TextProcessor):
 
     def set_inference_options(
         self,
-        sampling_strategy: str = "greedy",
-        temperature: float = 1.0,
-        top_k: int = 10,
-        top_p: float = 0.95,
+        sample: bool = False,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
         beam_width: int = 1,
         constraint: Const | None = None,
         max_length: int | None = None,
@@ -239,8 +239,7 @@ class TextGenerator(TextProcessor):
         use_cache: bool = False,
         full_outputs: bool = False,
     ) -> None:
-        assert sampling_strategy in ["greedy", "top_k", "top_p"]
-        self._sampling_strategy = sampling_strategy
+        self._sample = sample
         self._beam_width = beam_width
         self._temp = temperature
         self._top_k = top_k

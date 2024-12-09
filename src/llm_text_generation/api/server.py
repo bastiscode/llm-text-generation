@@ -40,8 +40,8 @@ class TextGenerationServer(TextProcessingServer):
 
             inputs = []
             for input in json["inputs"]:
-                text = input.get("text", None)
-                chat = input.get("chat", None)
+                text = input.get("text")
+                chat = input.get("chat")
                 if text is None and chat is None:
                     return abort(Response("missing text or chat in input", status=400))
                 elif text is not None and chat is not None:
@@ -51,20 +51,20 @@ class TextGenerationServer(TextProcessingServer):
                 else:
                     ipt = text or chat
 
-                constraint = parse_constraint(input.get("constraint", None))
+                constraint = parse_constraint(input.get("constraint"))
                 if constraint is None:
                     inputs.append(ipt)
                 else:
                     inputs.append((ipt, constraint))
 
-            sampling_strategy = json.get("sampling_strategy", "greedy")
+            sample = json.get("sample", False)
             beam_width = json.get("beam_width", 1)
-            top_k = json.get("top_k", 10)
-            top_p = json.get("top_p", 0.95)
-            temp = json.get("temperature", 1.0)
-            max_new_tokens = json.get("max_new_tokens", None)
+            top_k = json.get("top_k")
+            top_p = json.get("top_p")
+            temp = json.get("temperature")
+            max_new_tokens = json.get("max_new_tokens")
 
-            constraint = parse_constraint(json.get("constraint", None))
+            constraint = parse_constraint(json.get("constraint"))
 
             try:
                 name = json["model"]
@@ -73,7 +73,7 @@ class TextGenerationServer(TextProcessingServer):
                         return abort(gen.to_response())
                     assert isinstance(gen, TextGenerator)
                     gen.set_inference_options(
-                        sampling_strategy=sampling_strategy,
+                        sample=sample,
                         temperature=temp,
                         top_k=top_k,
                         top_p=top_p,
@@ -134,8 +134,8 @@ class TextGenerationServer(TextProcessingServer):
                     send(J.dumps({"error": "missing model in json"}))
                     return
 
-                text = json.get("text", None)
-                chat = json.get("chat", None)
+                text = json.get("text")
+                chat = json.get("chat")
                 if text is None and chat is None:
                     send(J.dumps({"error": "missing text or chat in input"}))
                     return
@@ -145,15 +145,15 @@ class TextGenerationServer(TextProcessingServer):
                 else:
                     ipt = text or chat
 
-                constraint = parse_constraint(json.get("constraint", None))
+                constraint = parse_constraint(json.get("constraint"))
                 if constraint is not None:
                     ipt = (ipt, constraint)
 
-                sampling_strategy = json.get("sampling_strategy", "greedy")
+                sample = json.get("sample", False)
                 beam_width = json.get("beam_width", 1)
-                top_k = json.get("top_k", 10)
-                top_p = json.get("top_p", 0.95)
-                temp = json.get("temperature", 1.0)
+                top_k = json.get("top_k")
+                top_p = json.get("top_p")
+                temp = json.get("temperature")
 
                 with self.text_processor(json["model"]) as gen:
                     if isinstance(gen, Error):
@@ -162,7 +162,7 @@ class TextGenerationServer(TextProcessingServer):
 
                     assert isinstance(gen, TextGenerator)
                     gen.set_inference_options(
-                        sampling_strategy=sampling_strategy,
+                        sample=sample,
                         temperature=temp,
                         top_k=top_k,
                         top_p=top_p,

@@ -33,12 +33,13 @@ class TextGenerationCli(TextProcessingCli):
         elif self.args.lr1_grammar is not None:
             constraint = (*self.args.lr1_grammar, self.args.lr1_exact)
         elif self.args.lr1_grammar_files is not None:
-            with open(self.args.lr1_grammar_files[0], "r") as f1, \
-                    open(self.args.lr1_grammar_files[1], "r") as f2:
+            with open(self.args.lr1_grammar_files[0], "r") as f1, open(
+                self.args.lr1_grammar_files[1], "r"
+            ) as f2:
                 constraint = (f1.read(), f2.read(), self.args.lr1_exact)
 
         gen.set_inference_options(
-            sampling_strategy=self.args.sampling_strategy,
+            sample=self.args.sample,
             temperature=self.args.temperature,
             top_k=self.args.top_k,
             top_p=self.args.top_p,
@@ -47,14 +48,12 @@ class TextGenerationCli(TextProcessingCli):
             max_length=self.args.max_length,
             max_new_tokens=self.args.max_new_tokens,
             use_cache=self.args.kv_cache,
-            full_outputs=self.args.full_outputs
+            full_outputs=self.args.full_outputs,
         )
         return gen
 
     def process_iter(
-        self,
-        processor: TextProcessor,
-        iter: Iterator[str]
+        self, processor: TextProcessor, iter: Iterator[str]
     ) -> Iterator[str]:
         assert isinstance(processor, TextGenerator)
         jsonl_out = self.args.output_format == "jsonl"
@@ -74,56 +73,62 @@ class TextGenerationCli(TextProcessingCli):
 
 def main():
     parser = TextGenerationCli.parser(
-        "Text generator",
-        "Generate natural language text."
+        "Text generator", "Generate natural language text."
     )
     parser.add_argument(
-        "--sampling-strategy",
-        choices=["greedy", "top_k", "top_p"],
-        type=str,
-        default="greedy",
-        help="Sampling strategy to use during decoding"
+        "--sample",
+        action="store_true",
+        help="Use sampling during decoding; "
+        "potentially uses temperature, top-k and top-p",
     )
     parser.add_argument(
         "--beam-width",
         type=int,
         default=1,
-        help="Beam width to use for beam search decoding"
+        help="Beam width to use for beam search decoding",
+    )
+    parser.add_argument(
+        "--beam-stop-condition",
+        type=str,
+        choices=["max score", "estimated score", "max outputs"],
+        default="max score",
+        help="Stop condition for beam search decoding; "
+        "in practice 'estimated score' is recommended",
     )
     parser.add_argument(
         "--top-k",
         type=int,
-        default=10,
-        help="Restrict to top k tokens during sampling"
+        default=None,
+        help="Restrict to top k tokens during sampling",
     )
     parser.add_argument(
         "--top-p",
         type=float,
-        default=0.95,
-        help="Restrict to top p cumulative probability tokens during sampling"
+        default=None,
+        help="Restrict to top p cumulative probability tokens during sampling",
     )
     parser.add_argument(
         "--temperature",
         type=float,
-        default=1.0,
-        help="Temperature to use during sampling"
+        default=None,
+        help="Temperature to use during sampling",
     )
     parser.add_argument(
         "--kv-cache",
         action="store_true",
-        help="Whether to use key and value caches during decoding"
+        help="Whether to use key and value caches during decoding",
     )
     parser.add_argument(
         "--max-length",
         type=int,
         default=None,
-        help="Maximum supported input/output length in tokens"
+        help="Maximum supported input/output length in tokens",
     )
     parser.add_argument(
         "--max-new-tokens",
         type=int,
         default=None,
-        help="Maximum number of new tokens to generate"
+        help="Maximum number of new tokens to generate",
     )
     constraints = parser.add_mutually_exclusive_group()
     constraints.add_argument(
@@ -131,7 +136,7 @@ def main():
         "--regex",
         type=str,
         default=None,
-        help="Regular expression to constrain text generation"
+        help="Regular expression to constrain text generation",
     )
     constraints.add_argument(
         "-ref",
@@ -139,7 +144,7 @@ def main():
         type=str,
         default=None,
         help="Path to file containing a regular expression to constrain "
-        "text generation"
+        "text generation",
     )
     constraints.add_argument(
         "-lr1",
@@ -148,7 +153,7 @@ def main():
         type=str,
         default=None,
         metavar=("GRAMMAR", "LEXER"),
-        help="LR(1) grammar and lexer definitions to constrain text generation"
+        help="LR(1) grammar and lexer definitions to constrain text generation",
     )
     constraints.add_argument(
         "-lr1f",
@@ -158,39 +163,36 @@ def main():
         default=None,
         metavar=("GRAMMAR_FILE", "LEXER_FILE"),
         help="Paths to files containing a LR(1) grammar and lexer definitions "
-        "to constrain text generation"
+        "to constrain text generation",
     )
     parser.add_argument(
         "-lr1e",
         "--lr1-exact",
         action="store_true",
         help="Whether to use exact constraining (respect terminal boundaries) "
-        "with LR(1) grammars"
+        "with LR(1) grammars",
     )
     parser.add_argument(
         "-full",
         "--full-outputs",
         action="store_true",
         help="Whether to return input and generated text as output "
-        "(default is only generated text)"
+        "(default is only generated text)",
     )
     parser.add_argument(
         "--input-format",
         choices=["text", "jsonl"],
         default="text",
-        help="Whether to treat input files as jsonl or text"
+        help="Whether to treat input files as jsonl or text",
     )
     parser.add_argument(
         "--output-format",
         choices=["text", "jsonl"],
         default="text",
-        help="Whether to format output as jsonl or text"
+        help="Whether to format output as jsonl or text",
     )
     parser.add_argument(
-        "--seed",
-        type=int,
-        default=None,
-        help="Seed for random number generator"
+        "--seed", type=int, default=None, help="Seed for random number generator"
     )
     args = parser.parse_args()
     if args.seed is not None:
