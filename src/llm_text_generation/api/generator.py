@@ -70,18 +70,20 @@ class TextGenerator(TextProcessor):
             self.cfg["inference"]["tokenizer"]
         )
 
-        # some options for inference
-        self._eos_token = self.cfg["inference"]["eos"]
-        self._eos_token_id = self.tokenizer.token_to_id(self._eos_token)
-
         # continuations are the postprocessed tokens from the vocab
         # (already sorted by token id)
         self._continuations = self.tokenizer.get_continuations(initial=False)
+
+        # some options for inference
+        self._eos_token = self.cfg["inference"]["eos"]
+        self._eos_token_id = self.tokenizer.token_to_id(self._eos_token)
         self._sample = False
         self._beam_width = 1
         self._temp: int | None = None
         self._top_k: int | None = None
         self._top_p: int | None = None
+        self._stop_condition = "estimated score"
+
         self._use_cache = False
         self._full_outputs = False
         self._max_length = None
@@ -206,6 +208,7 @@ class TextGenerator(TextProcessor):
             update_fn=update_fn,
             logit_fns=logit_fns,
             kwargs_update_fn=_kwargs_update_fn,
+            stop_condition=self._stop_condition,
             max_new_tokens=self._max_new_tokens,
             return_incomplete=True,
             yield_intermediate=True,
@@ -236,6 +239,7 @@ class TextGenerator(TextProcessor):
         constraint: Const | None = None,
         max_length: int | None = None,
         max_new_tokens: int | None = None,
+        stop_condition: str = "estimated score",
         use_cache: bool = False,
         full_outputs: bool = False,
     ) -> None:
@@ -244,6 +248,7 @@ class TextGenerator(TextProcessor):
         self._temp = temperature
         self._top_k = top_k
         self._top_p = top_p
+        self._stop_condition = stop_condition
         if constraint is not None:
             self._constraint = self._get_constraint(constraint)
         else:
