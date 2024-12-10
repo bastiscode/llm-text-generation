@@ -40,6 +40,7 @@ class TextGenerationCli(TextProcessingCli):
 
         gen.set_inference_options(
             sample=self.args.sample,
+            repeat_penalty=self.args.repeat_penalty,
             temperature=self.args.temperature,
             top_k=self.args.top_k,
             top_p=self.args.top_p,
@@ -112,6 +113,12 @@ def main():
         type=float,
         default=None,
         help="Temperature to use during sampling",
+    )
+    parser.add_argument(
+        "--repeat-penalty",
+        type=float,
+        default=None,
+        help="Penalty to apply to repeated tokens",
     )
     parser.add_argument(
         "--kv-cache",
