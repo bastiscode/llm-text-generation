@@ -22,6 +22,19 @@ def parse_constraint(json: dict[str, Any] | None) -> Const | None:
         raise ValueError(f"invalid constraint type: {typ}")
 
 
+def inference_options_from_json(json: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "sample": json.get("sample", False),
+        "temperature": json.get("temperature"),
+        "top_k": json.get("top_k"),
+        "top_p": json.get("top_p"),
+        "beam_width": json.get("beam_width", 1),
+        "repeat_penalty": json.get("repeat_penalty"),
+        "constraint": parse_constraint(json.get("constraint")),
+        "max_new_tokens": json.get("max_new_tokens"),
+    }
+
+
 class TextGenerationServer(TextProcessingServer):
     text_processor_cls = TextGenerator
 
@@ -57,14 +70,7 @@ class TextGenerationServer(TextProcessingServer):
                 else:
                     inputs.append((ipt, constraint))
 
-            sample = json.get("sample", False)
-            beam_width = json.get("beam_width", 1)
-            top_k = json.get("top_k")
-            top_p = json.get("top_p")
-            temp = json.get("temperature")
-            max_new_tokens = json.get("max_new_tokens")
-
-            constraint = parse_constraint(json.get("constraint"))
+            inference_options = inference_options_from_json(json)
 
             try:
                 name = json["model"]
@@ -72,15 +78,7 @@ class TextGenerationServer(TextProcessingServer):
                     if isinstance(gen, Error):
                         return abort(gen.to_response())
                     assert isinstance(gen, TextGenerator)
-                    gen.set_inference_options(
-                        sample=sample,
-                        temperature=temp,
-                        top_k=top_k,
-                        top_p=top_p,
-                        beam_width=beam_width,
-                        constraint=constraint,
-                        max_new_tokens=max_new_tokens,
-                    )
+                    gen.set_inference_options(**inference_options)
                     start = time.perf_counter()
 
                     idx = self.name_to_idx[name]
@@ -145,15 +143,7 @@ class TextGenerationServer(TextProcessingServer):
                 else:
                     ipt = text or chat
 
-                constraint = parse_constraint(json.get("constraint"))
-                if constraint is not None:
-                    ipt = (ipt, constraint)
-
-                sample = json.get("sample", False)
-                beam_width = json.get("beam_width", 1)
-                top_k = json.get("top_k")
-                top_p = json.get("top_p")
-                temp = json.get("temperature")
+                inference_options = inference_options_from_json(json)
 
                 with self.text_processor(json["model"]) as gen:
                     if isinstance(gen, Error):
@@ -161,14 +151,7 @@ class TextGenerationServer(TextProcessingServer):
                         return
 
                     assert isinstance(gen, TextGenerator)
-                    gen.set_inference_options(
-                        sample=sample,
-                        temperature=temp,
-                        top_k=top_k,
-                        top_p=top_p,
-                        beam_width=beam_width,
-                        constraint=constraint,
-                    )
+                    gen.set_inference_options(**inference_options)
 
                     start = time.perf_counter()
                     for text in gen.generate_live(ipt):  # type: ignore

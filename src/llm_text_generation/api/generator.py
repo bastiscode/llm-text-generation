@@ -82,6 +82,8 @@ class TextGenerator(TextProcessor):
         self._temp: int | None = None
         self._top_k: int | None = None
         self._top_p: int | None = None
+        self._repeat_penalty: float | None = None
+
         self._use_cache = False
         self._full_outputs = False
         self._max_length = None
@@ -182,6 +184,9 @@ class TextGenerator(TextProcessor):
             inference_utils.sample() if self._sample else inference_utils.greedy()
         )
 
+        if self._repeat_penalty is not None:
+            logit_fns.append(inference_utils.repeat_penalty(self._repeat_penalty))
+
         if self._sample and self._temp is not None:
             logit_fns.append(inference_utils.temperature_scaling(self._temp))
 
@@ -229,6 +234,7 @@ class TextGenerator(TextProcessor):
     def set_inference_options(
         self,
         sample: bool = False,
+        repeat_penalty: float | None = None,
         temperature: float | None = None,
         top_k: int | None = None,
         top_p: float | None = None,
@@ -240,10 +246,11 @@ class TextGenerator(TextProcessor):
         full_outputs: bool = False,
     ) -> None:
         self._sample = sample
-        self._beam_width = beam_width
+        self._repeat_penalty = repeat_penalty
         self._temp = temperature
         self._top_k = top_k
         self._top_p = top_p
+        self._beam_width = beam_width
         if constraint is not None:
             self._constraint = self._get_constraint(constraint)
         else:
