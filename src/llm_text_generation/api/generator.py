@@ -241,10 +241,10 @@ class TextGenerator(TextProcessor):
         top_k: int | None = None,
         top_p: float | None = None,
         beam_width: int = 1,
+        stop_condition: str = "estimated score",
         constraint: Const | None = None,
         max_length: int | None = None,
         max_new_tokens: int | None = None,
-        stop_condition: str = "estimated score",
         use_cache: bool = False,
         full_outputs: bool = False,
     ) -> None:
@@ -253,12 +253,14 @@ class TextGenerator(TextProcessor):
         self._temp = temperature
         self._top_k = top_k
         self._top_p = top_p
-        self._stop_condition = stop_condition
         self._beam_width = beam_width
+        self._stop_condition = stop_condition
+
         if constraint is not None:
             self._constraint = self._get_constraint(constraint)
         else:
             self._constraint = None
+
         self._max_length = max_length
         self._max_new_tokens = max_new_tokens
         self._use_cache = use_cache

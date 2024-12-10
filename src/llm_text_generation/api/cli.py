@@ -45,6 +45,7 @@ class TextGenerationCli(TextProcessingCli):
             top_k=self.args.top_k,
             top_p=self.args.top_p,
             beam_width=self.args.beam_width,
+            stop_condition=self.args.beam_stop_condition,
             constraint=constraint,
             max_length=self.args.max_length,
             max_new_tokens=self.args.max_new_tokens,
