@@ -99,7 +99,6 @@ class PretrainedDecoderForClassification(Model):
         model: str | PreTrainedModel,
         output_layer_name: str,
         classes: list[str],
-        output_position: str | int = "last",
         **kwargs: Any,
     ):
         super().__init__()
@@ -124,7 +123,6 @@ class PretrainedDecoderForClassification(Model):
         )
         self.classes = classes
         self.idx_to_class = {i: c for i, c in enumerate(classes)}
-        self.output_position = output_position
 
     def forward(
         self,
@@ -135,18 +133,9 @@ class PretrainedDecoderForClassification(Model):
         assert lengths is not None, "lengths must be provided"
         logits = self.model(input_ids=token_ids).logits
         assert torch.all(lengths > 0), "lengths must be greater than 0"
-        if self.output_position == "first":
-            logits = logits[:, 0]
-        elif self.output_position == "last":
-            logits = logits[torch.arange(len(logits)), lengths - 1]
-        elif isinstance(self.output_position, int):
-            assert torch.all(
-                lengths > self.output_position
-            ), "all lengths must be greater than output_position"
-            logits = logits[:, self.output_position]
-        else:
-            raise ValueError(f"unknown output_position {self.output_position}")
-
+        # for causal models, always take the last token
+        # because only it has access to all previous tokens
+        logits = logits[torch.arange(len(logits)), lengths - 1]
         return logits, {}
 
     def classify(
@@ -352,6 +341,7 @@ class PretrainedDecoder(Model):
 def peft_model_from_config(model: Model, cfg: dict[str, Any]) -> Model:
     peft = copy.deepcopy(cfg)
     typ = peft.pop("type")
+    trainable = peft.pop("trainable_modules", [])
     if typ == "lora":
         peft_cfg = LoraConfig(**peft)
     else:
@@ -359,6 +349,17 @@ def peft_model_from_config(model: Model, cfg: dict[str, Any]) -> Model:
 
     assert isinstance(model.model, PreTrainedModel)
     model.model = get_peft_model(model.model, peft_cfg)
+    assert isinstance(model.model, PeftModel)
+
+    if not trainable:
+        return model
+
+    # make some additional modules trainable
+    for name, module in model.model.named_modules():
+        if any(name.endswith(t) for t in trainable):
+            for p in module.parameters():
+                p.requires_grad = True
+
     return model
 
 
