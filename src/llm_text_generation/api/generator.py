@@ -47,7 +47,6 @@ class TextGenerator(TextProcessor):
     @classmethod
     def _model_from_config(cls, cfg: dict[str, Any], device: Device) -> nn.Module:
         model = model_from_config(cfg["model"])
-        assert isinstance(model, PretrainedDecoder)
         peft = cfg.get("train", {}).get("peft", None)
         if peft is not None:
             model = peft_model_from_config(model, peft)
@@ -60,10 +59,11 @@ class TextGenerator(TextProcessor):
 
     def __init__(self, model: Model, cfg: dict[str, Any], device: Device) -> None:
         super().__init__(model, cfg, device)
-        assert isinstance(model, PretrainedDecoder)
-        self.logger.debug(f"got model config:\n{self.cfg['model']}")
+        assert isinstance(model, PretrainedDecoder), "only decoder models are supported"
+
+        self.logger.debug(f"Got model config:\n{self.cfg['model']}")
         self.logger.info(
-            f"running {self.name} text generator "
+            f"Running {self.name} text generator "
             f"on devices {[device_info(d) for d in self.devices]}"
         )
         self.tokenizer = tokenization.Tokenizer.from_config(
@@ -148,7 +148,7 @@ class TextGenerator(TextProcessor):
             )
 
         initial_beams = []
-        for token_ids, index in zip(batch.token_ids(), batch.indices()):
+        for token_ids, (index, _) in zip(batch.token_ids(), batch.indices()):
             beam_info = {}
             if "const" in infos[index]:
                 beam_info["const"] = self._get_constraint(infos[index]["const"])

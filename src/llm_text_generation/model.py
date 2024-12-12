@@ -75,7 +75,25 @@ class Model(nn.Module):
         return self.to(devices[0])
 
 
+def get_pretrained_model(model: str | PreTrainedModel, **kwargs: Any) -> Model:
+    if kwargs.get("device_map") is not None:
+        kwargs["device_map"] = brace_expand_keys(kwargs["device_map"])
+
+    return AutoModelForCausalLM.from_pretrained(
+        model,
+        torch_dtype=kwargs.pop("torch_dtype", "auto"),
+        **kwargs,
+    )
+
+
+ClassAndProb = tuple[str, float]
+
+
 class PretrainedDecoderForClassification(Model):
+    model: PreTrainedModel | PeftModel
+    classes: list[str]
+    idx_to_class: dict[int, str]
+
     def __init__(
         self,
         model: str | PreTrainedModel,
@@ -85,11 +103,11 @@ class PretrainedDecoderForClassification(Model):
         **kwargs: Any,
     ):
         super().__init__()
-        self.model = PretrainedDecoder(model, **kwargs)
+        self.model = get_pretrained_model(model, **kwargs)
         # replace final layer with a linear layer
         assert hasattr(
             self.model, output_layer_name
-        ), f"output layer {output_layer_name} not found in model"
+        ), f"output layer {output_layer_name} not found in model:\n{self.model}"
         layer = getattr(self.model, output_layer_name)
         assert isinstance(
             layer, nn.Linear
@@ -101,6 +119,7 @@ class PretrainedDecoderForClassification(Model):
                 layer.in_features,
                 len(classes),
                 device=layer.weight.device,
+                dtype=layer.weight.dtype,
             ),
         )
         self.classes = classes
@@ -114,7 +133,7 @@ class PretrainedDecoderForClassification(Model):
         **_: Any,
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         assert lengths is not None, "lengths must be provided"
-        logits, _ = self.model(token_ids)
+        logits = self.model(input_ids=token_ids).logits
         assert torch.all(lengths > 0), "lengths must be greater than 0"
         if self.output_position == "first":
             logits = logits[:, 0]
@@ -132,7 +151,7 @@ class PretrainedDecoderForClassification(Model):
 
     def classify(
         self, token_ids: torch.Tensor, lengths: torch.Tensor, top_k: int = 1
-    ) -> list[list[tuple[str, float]]]:
+    ) -> list[list[ClassAndProb]]:
         logits, _ = self(token_ids, lengths)
 
         probs = torch.softmax(logits, dim=1)
@@ -166,17 +185,7 @@ class PretrainedDecoder(Model):
 
     def __init__(self, model: str, **kwargs: Any):
         super().__init__()
-        if kwargs.get("device_map") is not None:
-            kwargs["device_map"] = brace_expand_keys(kwargs["device_map"])
-
-        # set layer modules and other modules
-        # for distributing model across devices
-        # (or use device_map auto, the default)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model,
-            torch_dtype=kwargs.pop("torch_dtype", "auto"),
-            **kwargs,
-        )
+        self.model = get_pretrained_model(model, **kwargs)
 
     def get_sharding_policy(self) -> ShardingPolicy | None:
         policies = []

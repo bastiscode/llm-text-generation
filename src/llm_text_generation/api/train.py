@@ -51,17 +51,32 @@ class TextGenerationTrainer(Trainer):
 
         inputs = batch.tensors()
         input_type = inputs.pop("type")
-        assert input_type == "generation", f"unexpected input type: {input_type}"
 
-        labels = torch.from_numpy(inputs.pop("labels")).to(
-            non_blocking=True, dtype=torch.long, device=self.info.device
-        )
-        inputs = {
-            k: torch.from_numpy(v).to(
-                non_blocking=True, dtype=torch.int, device=self.info.device
+        if input_type == "generation":
+            labels = torch.from_numpy(inputs.pop("labels")).to(
+                non_blocking=True, dtype=torch.long, device=self.info.device
             )
-            for k, v in inputs.items()
-        }
+            inputs = {
+                k: torch.from_numpy(v).to(
+                    non_blocking=True, dtype=torch.int, device=self.info.device
+                )
+                for k, v in inputs.items()
+            }
+
+        elif input_type == "classification":
+            labels = torch.from_numpy(inputs.pop("labels")).to(
+                non_blocking=True, dtype=torch.long, device=self.info.device
+            )
+            inputs = {
+                k: torch.from_numpy(v).to(
+                    non_blocking=True, dtype=torch.int, device=self.info.device
+                )
+                for k, v in inputs.items()
+            }
+
+        else:
+            raise ValueError(f"unknown input type {input_type}")
+
         return inputs, labels
 
 

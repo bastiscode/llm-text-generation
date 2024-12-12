@@ -1,1 +1,2 @@
 from llm_text_generation.api.generator import TextGenerator
+from llm_text_generation.api.classifier import TextClassifier
