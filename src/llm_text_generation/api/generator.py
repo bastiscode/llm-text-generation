@@ -82,6 +82,7 @@ class TextGenerator(TextProcessor):
         self._temp: int | None = None
         self._top_k: int | None = None
         self._top_p: int | None = None
+        self._min_p: int | None = None
         self._stop_condition = "estimated score"
         self._repeat_penalty: float | None = None
 
@@ -185,6 +186,8 @@ class TextGenerator(TextProcessor):
             inference_utils.sample() if self._sample else inference_utils.greedy()
         )
 
+        keep_min = 2 if self._beam_width > 1 else 1
+
         if self._repeat_penalty is not None:
             logit_fns.append(inference_utils.repeat_penalty(self._repeat_penalty))
 
@@ -193,12 +196,15 @@ class TextGenerator(TextProcessor):
 
         if self._sample and self._top_k is not None:
             assert (
-                self._top_k >= self._beam_width
-            ), "top k must be greater than or equal to beam width"
+                self._top_k > self._beam_width
+            ), "top k must be greater than beam width"
             logit_fns.append(inference_utils.top_k_masking(self._top_k))
 
         if self._sample and self._top_p is not None:
-            logit_fns.append(inference_utils.nucleus_masking(self._top_p))
+            logit_fns.append(inference_utils.nucleus_masking(self._top_p, keep_min))
+
+        if self._sample and self._min_p is not None:
+            logit_fns.append(inference_utils.min_p_masking(self._min_p, keep_min))
 
         for output in beam_search(
             decode_fn=_decode_fn,
@@ -240,8 +246,9 @@ class TextGenerator(TextProcessor):
         temperature: float | None = None,
         top_k: int | None = None,
         top_p: float | None = None,
+        min_p: float | None = None,
         beam_width: int = 1,
-        stop_condition: str = "estimated score",
+        stop_condition: str = "estimated_score",
         constraint: Const | None = None,
         max_length: int | None = None,
         max_new_tokens: int | None = None,
@@ -253,6 +260,7 @@ class TextGenerator(TextProcessor):
         self._temp = temperature
         self._top_k = top_k
         self._top_p = top_p
+        self._min_p = min_p
         self._beam_width = beam_width
         self._stop_condition = stop_condition
 

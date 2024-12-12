@@ -44,6 +44,7 @@ class TextGenerationCli(TextProcessingCli):
             temperature=self.args.temperature,
             top_k=self.args.top_k,
             top_p=self.args.top_p,
+            min_p=self.args.min_p,
             beam_width=self.args.beam_width,
             stop_condition=self.args.beam_stop_condition,
             constraint=constraint,
@@ -92,7 +93,7 @@ def main():
     parser.add_argument(
         "--beam-stop-condition",
         type=str,
-        choices=["max score", "estimated score", "max outputs"],
+        choices=["max_score", "estimated_score", "max_outputs"],
         default="estimated score",
         help="Stop condition for beam search decoding; "
         "in practice 'estimated score' is recommended",
@@ -108,6 +109,13 @@ def main():
         type=float,
         default=None,
         help="Restrict to top p cumulative probability tokens during sampling",
+    )
+    parser.add_argument(
+        "--min-p",
+        type=float,
+        default=None,
+        help="Scaling factor of max probability to get a minimum probability for "
+        "tokens to sample from",
     )
     parser.add_argument(
         "--temperature",
