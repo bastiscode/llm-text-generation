@@ -130,7 +130,7 @@ class TextClassifier(TextProcessor):
 
         def inference_fn(
             batch: data.InferenceBatch,
-        ) -> list[ClassAndProb, list[ClassAndProb]]:
+        ) -> list[ClassAndProb | list[ClassAndProb]]:
             token_ids = batch.token_ids()
             lengths = batch.sizes()
 
@@ -150,7 +150,7 @@ class TextClassifier(TextProcessor):
         def postprocessing_fn(
             items: list[data.InferenceItem],
             outputs: list[ClassAndProb | list[ClassAndProb]],
-        ) -> str:
+        ) -> ClassAndProb | list[ClassAndProb]:
             assert len(items) == 1 and len(outputs) == 1
             return outputs[0]
 
