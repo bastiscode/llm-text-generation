@@ -94,7 +94,7 @@ def main():
         "--beam-stop-condition",
         type=str,
         choices=["max_score", "estimated_score", "max_outputs"],
-        default="estimated score",
+        default="estimated_score",
         help="Stop condition for beam search decoding; "
         "in practice 'estimated score' is recommended",
     )
