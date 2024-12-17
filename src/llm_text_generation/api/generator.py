@@ -83,7 +83,7 @@ class TextGenerator(TextProcessor):
         self._top_k: int | None = None
         self._top_p: int | None = None
         self._min_p: int | None = None
-        self._stop_condition = "estimated score"
+        self._stop_condition = "estimated_score"
         self._repeat_penalty: float | None = None
 
         self._use_cache = False
@@ -285,6 +285,7 @@ class TextGenerator(TextProcessor):
                 self.cfg["inference"]["tokenizer"],
                 self.cfg["inference"].get("window", {"type": "full"}),
                 ignore_special_tokens=self._is_chat,
+                num_threads=0,
             )
         )
 
@@ -319,7 +320,7 @@ class TextGenerator(TextProcessor):
             batch_size,
             batch_max_tokens,
             sort,
-            num_threads,
+            num_threads=num_threads,
             progress_total=len(inputs),
             show_progress=show_progress,
             ignore_special_tokens=self._is_chat,
