@@ -1,5 +1,4 @@
 import time
-import asyncio
 from typing import Any, Iterator, TypeVar
 
 from asyncer import asyncify
@@ -20,7 +19,7 @@ HTTP_TO_WS = {
 
 
 class Input(BaseModel):
-    input: str | list[dict[str, Any]]
+    text: str | list[dict[str, Any]]
     constraint: str | tuple[str, str, bool] | None = None
 
 
@@ -94,7 +93,7 @@ class TextGenerationServer(TextProcessingServer):
                     gen.set_inference_options(**request.inference_options.dict())
 
                     inputs = [
-                        (input.input, input.constraint) for input in request.inputs
+                        (input.text, input.constraint) for input in request.inputs
                     ]
 
                     start = time.perf_counter()
@@ -136,12 +135,17 @@ class TextGenerationServer(TextProcessingServer):
                         return
 
                     assert isinstance(gen, TextGenerator)
+                    # override max new tokens
+                    request.inference_options.max_new_tokens = min(
+                        gen.max_length,
+                        request.inference_options.max_new_tokens or gen.max_length,
+                    )
                     gen.set_inference_options(**request.inference_options.dict())
 
                     start = time.perf_counter()
                     async for text in AsyncIterator(
                         gen.generate_live(
-                            request.input.input,
+                            request.input.text,
                             request.input.constraint,
                         )
                     ):  # type: ignore
