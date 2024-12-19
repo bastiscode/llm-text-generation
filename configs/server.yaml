@@ -1,5 +1,5 @@
 port: env(PORT:40000)
-timeout: 10
+timeout: env(TIMEOUT:10)
 
 # global batch size, used as fallback
 batch_size: env(BATCH_SIZE:8)
@@ -10,6 +10,7 @@ models:
   # load a model from a local experiment by specifying the
   # directory path (you can use special configuration operators,
   # e.g. env(ENV_VAR) to load env variables)
-  - path: env(EXPERIMENT:models/gpt2)
+  test:
+    path: env(EXPERIMENT:models/gpt2)
     device: env(DEVICE:auto)
     batch_size: env(BATCH_SIZE:8) # batch size for this model

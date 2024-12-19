@@ -1,190 +1,172 @@
 import time
-import json as J
-from typing import Dict, Any
+import asyncio
+from typing import Any, Iterator, TypeVar
 
-from flask import Response, jsonify, request, abort
-from flask_socketio import SocketIO, send, disconnect
+from asyncer import asyncify
+from fastapi import WebSocket, WebSocketDisconnect, status
+from fastapi.responses import Response
+from websockets.exceptions import ConnectionClosed
+from pydantic import BaseModel, ValidationError
+from text_utils.api.server import Error, TextProcessingServer
 
-from text_utils.api.server import TextProcessingServer, Error
-
-from llm_text_generation.api.generator import Const, TextGenerator
-
-
-def parse_constraint(json: dict[str, Any] | None) -> Const | None:
-    if json is None:
-        return None
-    typ = json["type"]
-    if typ == "regex":
-        return json["regex"]
-    elif typ == "lr1":
-        return (json["grammar"], json["lexer"], json.get("exact", False))
-    else:
-        raise ValueError(f"invalid constraint type: {typ}")
+from llm_text_generation.api.generator import TextGenerator
 
 
-def inference_options_from_json(json: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "sample": json.get("sample", False),
-        "temperature": json.get("temperature"),
-        "top_k": json.get("top_k"),
-        "top_p": json.get("top_p"),
-        "beam_width": json.get("beam_width", 1),
-        "repeat_penalty": json.get("repeat_penalty"),
-        "constraint": parse_constraint(json.get("constraint")),
-        "max_new_tokens": json.get("max_new_tokens"),
-    }
+HTTP_TO_WS = {
+    status.HTTP_400_BAD_REQUEST: 1008,
+    status.HTTP_503_SERVICE_UNAVAILABLE: 1013,
+    status.HTTP_500_INTERNAL_SERVER_ERROR: 1011,
+}
+
+
+class Input(BaseModel):
+    input: str | list[dict[str, Any]]
+    constraint: str | tuple[str, str, bool] | None = None
+
+
+class InferenceOptions(BaseModel):
+    sample: bool = False
+    temperature: float | None = None
+    top_k: int | None = None
+    top_p: float | None = None
+    min_p: float | None = None
+    beam_width: int = 1
+    repeat_penalty: float | None = None
+    constraint: str | tuple[str, str, bool] | None = None
+    max_new_tokens: int | None = None
+
+
+class GenerateRequest(BaseModel):
+    model: str
+    inputs: list[Input]
+    inference_options: InferenceOptions = InferenceOptions()
+
+
+class LiveRequest(BaseModel):
+    model: str
+    input: Input
+    inference_options: InferenceOptions = InferenceOptions()
+
+
+T = TypeVar("T")
+
+
+class AsyncIterator:
+    def __init__(self, iterator: Iterator[T]):
+        self.iterator = iterator
+
+    def __aiter__(self) -> Iterator[T]:
+        return self
+
+    async def __anext__(self) -> T:
+        try:
+            return next(self.iterator)
+        except StopIteration:
+            raise StopAsyncIteration
 
 
 class TextGenerationServer(TextProcessingServer):
     text_processor_cls = TextGenerator
 
-    def __init__(self, config: Dict[str, Any]):
-        super().__init__(config)
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
 
-        @self.server.route("/generate", methods=["POST"])
-        def _generate() -> Response:
-            json = request.get_json()
-            if json is None:
-                return abort(Response("request body must be json", status=400))
-            elif "model" not in json:
-                return abort(Response("missing model in json", status=400))
-            elif "inputs" not in json:
-                return abort(Response("missing inputs in json", status=400))
-
-            inputs = []
-            for input in json["inputs"]:
-                text = input.get("text")
-                chat = input.get("chat")
-                if text is None and chat is None:
-                    return abort(Response("missing text or chat in input", status=400))
-                elif text is not None and chat is not None:
-                    return abort(
-                        Response("text and chat are mutually exclusive", status=400)
-                    )
-                else:
-                    ipt = text or chat
-
-                constraint = parse_constraint(input.get("constraint"))
-                if constraint is None:
-                    inputs.append(ipt)
-                else:
-                    inputs.append((ipt, constraint))
-
-            inference_options = inference_options_from_json(json)
-
+        @self.server.post("/generate")
+        async def generate(request: GenerateRequest) -> Response:
+            self.logger.info(f"Received generate request:\n{request.dict()}")
             try:
-                name = json["model"]
-                with self.text_processor(name) as gen:
+                async with self.get_text_processor(request.model) as gen:
                     if isinstance(gen, Error):
-                        return abort(gen.to_response())
-                    assert isinstance(gen, TextGenerator)
-                    gen.set_inference_options(**inference_options)
-                    start = time.perf_counter()
+                        return gen.to_response()
 
-                    idx = self.name_to_idx[name]
-                    model_cfg = self.config["models"][idx]
+                    assert isinstance(gen, TextGenerator)
+
+                    model_cfg = self.model_cfgs[request.model]
+                    batch_size = max(
+                        1,
+                        model_cfg.get("batch_size", self.config.get("batch_size", 1)),
+                    )
+                    # override max new tokens
+                    request.inference_options.max_new_tokens = min(
+                        gen.max_length,
+                        request.inference_options.max_new_tokens or gen.max_length,
+                    )
+                    gen.set_inference_options(**request.inference_options.dict())
+
+                    inputs = [
+                        (input.input, input.constraint) for input in request.inputs
+                    ]
+
+                    start = time.perf_counter()
                     outputs = list(
-                        gen.generate(
-                            inputs,
-                            model_cfg.get(
-                                "batch_size", self.config.get("batch_size", 1)
-                            ),
+                        await asyncify(gen.generate, abandon_on_cancel=True)(
+                            inputs, batch_size
                         )
                     )
-
                     end = time.perf_counter()
+
                     b = sum(len(output.encode()) for output in outputs)
                     s = end - start
 
-                    output = {
+                    return {
                         "outputs": outputs,
                         "runtime": {"b": b, "s": s},
                     }
-                    return jsonify(output)
 
             except Exception as error:
-                return abort(
-                    Response(
-                        f"request failed with unexpected error: {error}", status=500
-                    )
-                )
+                return Error(
+                    f"Request failed with unexpected error: {error}",
+                    status.HTTP_500_INTERNAL_SERVER_ERROR,
+                ).to_response()
 
-        self.socketio = SocketIO(
-            self.server, path="live", cors_allowed_origins=self.allow_origin
-        )
-
-        self.connections = set()
-
-        @self.socketio.on("connect")
-        def _connect() -> None:
-            self.connections.add(request.sid)  # type: ignore
-
-        @self.socketio.on("disconnect")
-        def _disconnect() -> None:
-            self.connections.remove(request.sid)  # type: ignore
-
-        @self.socketio.on("message")
-        def _generate_live(data) -> None:
+        @self.server.websocket("/live")
+        async def live(websocket: WebSocket):
             try:
-                json = J.loads(data)
+                await websocket.accept()
 
-                if "model" not in json:
-                    send(J.dumps({"error": "missing model in json"}))
-                    return
+                data = await websocket.receive_json()
+                request = LiveRequest(**data)
 
-                text = json.get("text")
-                chat = json.get("chat")
-                if text is None and chat is None:
-                    send(J.dumps({"error": "missing text or chat in input"}))
-                    return
-                elif text is not None and chat is not None:
-                    send(J.dumps({"error": "text and chat are mutually exclusive"}))
-                    return
-                else:
-                    ipt = text or chat
-
-                inference_options = inference_options_from_json(json)
-
-                with self.text_processor(json["model"]) as gen:
+                async with self.get_text_processor(request.model) as gen:
                     if isinstance(gen, Error):
-                        send(J.dumps({"error": gen.msg}))
+                        await websocket.close(
+                            HTTP_TO_WS.get(gen.status_code, 1011),
+                            gen.error,
+                        )
                         return
 
                     assert isinstance(gen, TextGenerator)
-                    gen.set_inference_options(**inference_options)
+                    gen.set_inference_options(**request.inference_options.dict())
 
                     start = time.perf_counter()
-                    for text in gen.generate_live(ipt):  # type: ignore
-                        if request.sid not in self.connections:
-                            # early explicit disconnect by client
-                            return
-
-                        send(
-                            J.dumps(
-                                {
-                                    "output": text,
-                                    "runtime": {
-                                        "b": len(text.encode()),
-                                        "s": time.perf_counter() - start,
-                                    },
-                                }
-                            )
+                    async for text in AsyncIterator(
+                        gen.generate_live(
+                            request.input.input,
+                            request.input.constraint,
+                        )
+                    ):  # type: ignore
+                        await websocket.send_json(
+                            {
+                                "output": text,
+                                "runtime": {
+                                    "b": len(text.encode()),
+                                    "s": time.perf_counter() - start,
+                                },
+                            }
                         )
 
-            except Exception as error:
-                send(
-                    J.dumps({"error": f"request failed with unexpected error: {error}"})
-                )
+                await websocket.close()
 
-            finally:
-                disconnect()
+            except WebSocketDisconnect as e:
+                self.logger.info(f"Client disconnected: {e.code}, {e.reason}")
 
-    def run(self) -> None:
-        self.socketio.run(
-            self.server,
-            "0.0.0.0",
-            self.port,
-            debug=False,
-            use_reloader=False,
-            log_output=False,
-        )
+            except ConnectionClosed as e:
+                self.logger.info(f"Connection closed: {e}")
+
+            except ValidationError as e:
+                self.logger.error(f"Request failed with validation error: {e}")
+                await websocket.close(HTTP_TO_WS[status.HTTP_400_BAD_REQUEST])
+
+            except Exception as e:
+                self.logger.error(f"Request failed with unexpected error: {e}")
+                await websocket.close(HTTP_TO_WS[status.HTTP_500_INTERNAL_SERVER_ERROR])

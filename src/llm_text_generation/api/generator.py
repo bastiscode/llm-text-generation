@@ -105,19 +105,17 @@ class TextGenerator(TextProcessor):
 
     def _prepare_input(
         self,
-        ipt: str | Chat | tuple[str | Chat, Const],
+        input: str | Chat,
+        constraint: Const | None = None,
     ) -> tuple[str, dict[str, Any]]:
-        info = {}
-        if isinstance(ipt, tuple):
-            ipt, constraint = ipt
-            info["const"] = constraint
+        info = {"const": constraint}
 
         template = self.cfg["inference"].get(
             "chat_template",
             {"roles": {"system": "{text}", "user": "{text}", "assistant": "{text}"}},
         )
 
-        prompt = format_chat(ipt, template)
+        prompt = format_chat(input, template)
         return prompt, info
 
     @torch.inference_mode()
@@ -151,7 +149,7 @@ class TextGenerator(TextProcessor):
         initial_beams = []
         for token_ids, (index, _) in zip(batch.token_ids(), batch.indices()):
             beam_info = {}
-            if "const" in infos[index]:
+            if infos[index].get("const"):
                 beam_info["const"] = self._get_constraint(infos[index]["const"])
             elif self._constraint is not None:
                 constraint = self._constraint.clone()
@@ -276,9 +274,11 @@ class TextGenerator(TextProcessor):
 
     def generate_live(
         self,
-        ipt: str | Chat | tuple[str | Chat, Const],
+        input: str | Chat,
+        constraint: Const | None = None,
     ) -> Iterator[str]:
-        input, info = self._prepare_input(ipt)
+        input, info = self._prepare_input(input, constraint)
+
         batch = next(
             data.InferenceLoader.from_iterator(
                 iter([input]),
@@ -293,14 +293,16 @@ class TextGenerator(TextProcessor):
 
     def generate(
         self,
-        inputs: Iterable[str | Chat | tuple[str | Chat, Const]],
+        inputs: Iterable[str | Chat | tuple[str | Chat, Const | None]],
         batch_size: int = 16,
         batch_max_tokens: int | None = None,
         sort: bool = True,
         num_threads: int | None = None,
         show_progress: bool = False,
     ) -> Iterator[str]:
-        inputs, infos = zip(*(self._prepare_input(ipt) for ipt in inputs))
+        inputs, infos = zip(
+            *(self._prepare_input(text, constraint) for text, constraint in inputs)
+        )
 
         def inference_fn(batch: data.InferenceBatch) -> list[str]:
             *_, last = self._live_inference(batch, infos)

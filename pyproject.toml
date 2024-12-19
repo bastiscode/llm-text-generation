@@ -20,11 +20,13 @@ classifiers = [
 
 dependencies = [
     "dtpu==0.6.0",
-    "transformers>=4.42.0",
+    "transformers>=4.46.0",
     "peft>=0.11.0",
-    "flask_socketio>=5.3",
     "braceexpand>=0.1.7",
-    "grammar-utils>=0.1.0"
+    "grammar-utils>=0.1.0",
+    # for fast api websockets
+    "websockets>=14.0",
+    "asyncer>=0.0.8"
 ]
 
 [project.scripts]
