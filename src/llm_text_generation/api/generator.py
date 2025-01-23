@@ -293,16 +293,14 @@ class TextGenerator(TextProcessor):
 
     def generate(
         self,
-        inputs: Iterable[str | Chat | tuple[str | Chat, Const | None]],
+        inputs: Iterable[tuple[str | Chat, Const | None]],
         batch_size: int = 16,
         batch_max_tokens: int | None = None,
         sort: bool = True,
         num_threads: int | None = None,
         show_progress: bool = False,
     ) -> Iterator[str]:
-        inputs, infos = zip(
-            *(self._prepare_input(text, constraint) for text, constraint in inputs)
-        )
+        inputs, infos = zip(*(self._prepare_input(*input) for input in inputs))
 
         def inference_fn(batch: data.InferenceBatch) -> list[str]:
             *_, last = self._live_inference(batch, infos)

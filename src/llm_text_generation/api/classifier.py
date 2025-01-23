@@ -1,7 +1,6 @@
 from typing import Any, Iterable, Iterator
 
 import torch
-from grammar_utils.constrain import Constraint, LR1Constraint, RegexConstraint
 from text_utils import data, tokenization
 from text_utils.api.processor import ModelInfo, TextProcessor
 from text_utils.api.utils import (
@@ -9,9 +8,6 @@ from text_utils.api.utils import (
     device_info,
     get_devices,
 )
-from text_utils.inference import beam_search
-from text_utils.inference import utils as inference_utils
-from text_utils.inference.utils import Beam
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 
@@ -19,7 +15,6 @@ from llm_text_generation.api.utils import format_chat
 from llm_text_generation.model import (
     ClassAndProb,
     Model,
-    PretrainedDecoder,
     PretrainedDecoderForClassification,
     model_from_config,
     peft_model_from_config,

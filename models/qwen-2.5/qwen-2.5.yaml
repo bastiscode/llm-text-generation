@@ -4,6 +4,7 @@ experiment:
 model:
   model: Qwen/Qwen2.5-env(QWEN25_SIZE:7B)
   type: pretrained_decoder
+  device_map: auto
 
 seed: 22
 
@@ -13,4 +14,4 @@ inference:
     type: full
   tokenizer: file(../../configs/tokenizers/qwen-2.5.yaml)
   eos: <|endoftext|>
-  chat_template: file(../../configs/chat_templates/qwen-2.5.yaml)
+  chat_template: file(../../configs/chat_templates/default.yaml)

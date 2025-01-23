@@ -33,9 +33,10 @@ class TextGenerationCli(TextProcessingCli):
         elif self.args.lr1_grammar is not None:
             constraint = (*self.args.lr1_grammar, self.args.lr1_exact)
         elif self.args.lr1_grammar_files is not None:
-            with open(self.args.lr1_grammar_files[0], "r") as f1, open(
-                self.args.lr1_grammar_files[1], "r"
-            ) as f2:
+            with (
+                open(self.args.lr1_grammar_files[0], "r") as f1,
+                open(self.args.lr1_grammar_files[1], "r") as f2,
+            ):
                 constraint = (f1.read(), f2.read(), self.args.lr1_exact)
 
         gen.set_inference_options(
@@ -56,7 +57,9 @@ class TextGenerationCli(TextProcessingCli):
         return gen
 
     def process_iter(
-        self, processor: TextProcessor, iter: Iterator[str]
+        self,
+        processor: TextProcessor,
+        iter: Iterator[str],
     ) -> Iterator[str]:
         assert isinstance(processor, TextGenerator)
         jsonl_out = self.args.output_format == "jsonl"
@@ -64,7 +67,10 @@ class TextGenerationCli(TextProcessingCli):
         yield from (
             json.dumps(output) if jsonl_out else output
             for output in processor.generate(
-                (json.loads(item) if jsonl_in else item for item in iter),
+                (
+                    (json.loads(item), None) if jsonl_in else (item, None)
+                    for item in iter
+                ),
                 batch_size=self.args.batch_size,
                 batch_max_tokens=self.args.batch_max_tokens,
                 sort=not self.args.unsorted,

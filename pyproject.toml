@@ -1,6 +1,6 @@
 [project]
 name = "llm_text_generation"
-version = "0.1.1"
+version = "0.1.2"
 description = "Run large language models."
 authors = [
     { name = "Sebastian Walter", email = "swalter@cs.uni-freiburg.de" }
@@ -19,12 +19,11 @@ classifiers = [
 ]
 
 dependencies = [
-    "dtpu==0.6.0",
+    "dtpu>=0.6.2",
+    "grammar-utils>=0.1.2",
     "transformers>=4.46.0",
-    "peft>=0.11.0",
+    "peft>=0.11",
     "braceexpand>=0.1.7",
-    "grammar-utils>=0.1.0",
-    # for fast api websockets
     "websockets>=14.0",
 ]
 

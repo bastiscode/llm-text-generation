@@ -4,6 +4,7 @@ experiment:
 model:
   model: env(GPT2_MODEL:gpt2)
   type: pretrained_decoder
+  device_map: auto
 
 seed: 22
 

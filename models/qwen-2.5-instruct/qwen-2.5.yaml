@@ -4,6 +4,7 @@ experiment:
 model:
   model: Qwen/Qwen2.5-env(QWEN25_SIZE:7B)-Instruct
   type: pretrained_decoder
+  device_map: auto
 
 seed: 22
 

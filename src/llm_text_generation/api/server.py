@@ -1,15 +1,13 @@
 import time
 from typing import Any, Iterator, TypeVar
 
-from asyncer import asyncify
 from fastapi import WebSocket, WebSocketDisconnect, status
 from fastapi.responses import Response
-from websockets.exceptions import ConnectionClosed
 from pydantic import BaseModel, ValidationError
 from text_utils.api.server import Error, TextProcessingServer
+from websockets.exceptions import ConnectionClosed
 
 from llm_text_generation.api.generator import TextGenerator
-
 
 HTTP_TO_WS = {
     status.HTTP_400_BAD_REQUEST: 1008,
@@ -24,13 +22,13 @@ class Input(BaseModel):
 
 
 class InferenceOptions(BaseModel):
-    sample: bool = False
+    sample: bool = True
     temperature: float | None = None
     top_k: int | None = None
     top_p: float | None = None
-    min_p: float | None = None
+    min_p: float | None = 0.1
     beam_width: int = 1
-    repeat_penalty: float | None = None
+    repeat_penalty: float | None = 1.05
     constraint: str | tuple[str, str, bool] | None = None
     max_new_tokens: int | None = None
 
@@ -71,10 +69,10 @@ class TextGenerationServer(TextProcessingServer):
         super().__init__(*args, **kwargs)
 
         @self.server.post("/generate")
-        async def generate(request: GenerateRequest) -> Response:
+        def generate(request: GenerateRequest) -> Response:
             self.logger.info(f"Received generate request:\n{request.dict()}")
             try:
-                async with self.get_text_processor(request.model) as gen:
+                with self.get_text_processor(request.model) as gen:
                     if isinstance(gen, Error):
                         return gen.to_response()
 
@@ -97,11 +95,7 @@ class TextGenerationServer(TextProcessingServer):
                     ]
 
                     start = time.perf_counter()
-                    outputs = list(
-                        await asyncify(gen.generate, abandon_on_cancel=True)(
-                            inputs, batch_size
-                        )
-                    )
+                    outputs = list(gen.generate(inputs, batch_size))
                     end = time.perf_counter()
 
                     b = sum(len(output.encode()) for output in outputs)
