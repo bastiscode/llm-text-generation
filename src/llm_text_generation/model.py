@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 import torch
 from braceexpand import braceexpand
-from peft.mapping import get_peft_model
+from peft import get_peft_model
 from peft.peft_model import PeftModel
 from peft.tuners.lora import LoraConfig
 from text_utils.api import utils
